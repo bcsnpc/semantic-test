@@ -1,0 +1,130 @@
+{
+  "changes": [
+    {
+      "change_type": "ModifiedObject",
+      "downstream_by_type": {
+        "Measure": 2
+      },
+      "downstream_count": 2,
+      "object_id": "Measure:Sales.Base",
+      "top_downstream_objects": [
+        {
+          "name": "NewKpi",
+          "object_id": "Measure:Sales.NewKpi",
+          "type": "Measure"
+        },
+        {
+          "name": "Total",
+          "object_id": "Measure:Sales.Total",
+          "type": "Measure"
+        }
+      ]
+    },
+    {
+      "change_type": "AddedObject",
+      "downstream_by_type": {},
+      "downstream_count": 0,
+      "object_id": "Measure:Sales.NewKpi",
+      "top_downstream_objects": []
+    }
+  ],
+  "coverage": {
+    "items": [
+      {
+        "area": "parser",
+        "icon": "\u2705",
+        "notes": "Path discovery flow planned in pbip_locator.",
+        "pattern": "Locate PBIP/TMDL files",
+        "status": "supported"
+      },
+      {
+        "area": "extractor.tables",
+        "icon": "\u2705",
+        "notes": "Canonical table IDs are defined.",
+        "pattern": "Table object extraction",
+        "status": "supported"
+      },
+      {
+        "area": "extractor.columns",
+        "icon": "\u26a0\ufe0f",
+        "notes": "ID model exists; parser wiring pending.",
+        "pattern": "Column extraction",
+        "status": "partial"
+      },
+      {
+        "area": "extractor.measures",
+        "icon": "\u26a0\ufe0f",
+        "notes": "ID model supports table/no-table forms.",
+        "pattern": "Measure extraction",
+        "status": "partial"
+      },
+      {
+        "area": "extractor.relationships",
+        "icon": "\u26a0\ufe0f",
+        "notes": "Relationship objects extracted; graph edge wiring pending.",
+        "pattern": "Relationship extraction",
+        "status": "partial"
+      },
+      {
+        "area": "extractor.calc_groups",
+        "icon": "\u26a0\ufe0f",
+        "notes": "Experimental coverage: node presence + expression dependencies.",
+        "pattern": "Calculation groups and items",
+        "status": "partial"
+      },
+      {
+        "area": "extractor.field_params",
+        "icon": "\u26a0\ufe0f",
+        "notes": "Experimental coverage: special table detection + dependencies.",
+        "pattern": "Field parameter tables",
+        "status": "partial"
+      }
+    ],
+    "summary": {
+      "partial": 5,
+      "supported": 2,
+      "total": 7,
+      "unsupported": 0
+    }
+  },
+  "known_gaps": [
+    {
+      "area": "extractor.calc_groups",
+      "notes": "Experimental coverage: node presence + expression dependencies.",
+      "pattern": "Calculation groups and items",
+      "status": "partial"
+    },
+    {
+      "area": "extractor.columns",
+      "notes": "ID model exists; parser wiring pending.",
+      "pattern": "Column extraction",
+      "status": "partial"
+    },
+    {
+      "area": "extractor.field_params",
+      "notes": "Experimental coverage: special table detection + dependencies.",
+      "pattern": "Field parameter tables",
+      "status": "partial"
+    },
+    {
+      "area": "extractor.measures",
+      "notes": "ID model supports table/no-table forms.",
+      "pattern": "Measure extraction",
+      "status": "partial"
+    },
+    {
+      "area": "extractor.relationships",
+      "notes": "Relationship objects extracted; graph edge wiring pending.",
+      "pattern": "Relationship extraction",
+      "status": "partial"
+    }
+  ],
+  "summary": {
+    "added": 1,
+    "modified": 1,
+    "removed": 0,
+    "total_changes": 2
+  },
+  "unknown_patterns": [],
+  "version": "0.1"
+}

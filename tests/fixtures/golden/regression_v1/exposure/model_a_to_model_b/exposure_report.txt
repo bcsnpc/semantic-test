@@ -1,0 +1,54 @@
+semantic-test Exposure Report
+Tool Version: 0.1.0
+Model Key: semanticmodel::Regression.SemanticModel/definition
+Run ID: <RUN_ID>
+Old Snapshot Hash: <SNAPSHOT_HASH>
+New Snapshot Hash: <SNAPSHOT_HASH>
+
+Detected Changes
+  Total: 1
+  Added: 0
+  Removed: 0
+  Modified: 1
+
+Per-Changed-Object Exposure
+- Measure:Base Sales
+  - Change Type: ModifiedObject
+  - Downstream Dependents: 1
+  - Breakdown: Measure=1
+  - All Affected Objects:
+    - Measure:Total Sales
+
+Coverage Summary
+  Supported: 2
+  Partial: 5
+  Unsupported: 0
+
+Coverage Details
+Coverage Summary
+  ✅ Supported: 2
+  ⚠️ Partial: 5
+  ❌ Unsupported: 0
+Coverage Matrix
+  ✅ [parser] Locate PBIP/TMDL files - Path discovery flow planned in pbip_locator.
+  ✅ [extractor.tables] Table object extraction - Canonical table IDs are defined.
+  ⚠️ [extractor.columns] Column extraction - ID model exists; parser wiring pending.
+  ⚠️ [extractor.measures] Measure extraction - ID model supports table/no-table forms.
+  ⚠️ [extractor.relationships] Relationship extraction - Relationship objects extracted; graph edge wiring pending.
+  ⚠️ [extractor.calc_groups] Calculation groups and items - Experimental coverage: node presence + expression dependencies.
+  ⚠️ [extractor.field_params] Field parameter tables - Experimental coverage: special table detection + dependencies.
+
+Known Gaps
+- [partial] extractor.calc_groups | Calculation groups and items | Experimental coverage: node presence + expression dependencies.
+- [partial] extractor.columns | Column extraction | ID model exists; parser wiring pending.
+- [partial] extractor.field_params | Field parameter tables | Experimental coverage: special table detection + dependencies.
+- [partial] extractor.measures | Measure extraction | ID model supports table/no-table forms.
+- [partial] extractor.relationships | Relationship extraction | Relationship objects extracted; graph edge wiring pending.
+
+Unknown Patterns
+- none
+
+Unresolved Refs
+- none
+
+Disclaimer: Structural exposure only; does not evaluate KPI correctness.

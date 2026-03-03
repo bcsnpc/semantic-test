@@ -1,0 +1,25 @@
+Status: CLEAN
+Diff Report
+Before: <REPO>/tests/fixtures/regression_models/model_a
+After: <REPO>/tests/fixtures/regression_models/model_c
+
+Changes: 1 (Added: 0, Removed: 1, Modified: 0)
+
+Changed Objects
+- RemovedObject | Column | Column:<unknown>.Amount
+
+Unknown Pattern Objects: 0
+
+Coverage
+Coverage Summary
+  ✅ Supported: 2
+  ⚠️ Partial: 5
+  ❌ Unsupported: 0
+Coverage Matrix
+  ✅ [parser] Locate PBIP/TMDL files - Path discovery flow planned in pbip_locator.
+  ✅ [extractor.tables] Table object extraction - Canonical table IDs are defined.
+  ⚠️ [extractor.columns] Column extraction - ID model exists; parser wiring pending.
+  ⚠️ [extractor.measures] Measure extraction - ID model supports table/no-table forms.
+  ⚠️ [extractor.relationships] Relationship extraction - Relationship objects extracted; graph edge wiring pending.
+  ⚠️ [extractor.calc_groups] Calculation groups and items - Experimental coverage: node presence + expression dependencies.
+  ⚠️ [extractor.field_params] Field parameter tables - Experimental coverage: special table detection + dependencies.

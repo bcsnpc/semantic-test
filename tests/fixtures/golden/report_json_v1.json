@@ -1,0 +1,153 @@
+{
+  "changes": [
+    {
+      "change_type": "ModifiedObject",
+      "object_id": "Measure:Sales.Base",
+      "object_type": "Measure"
+    },
+    {
+      "change_type": "AddedObject",
+      "object_id": "Measure:Sales.NewKpi",
+      "object_type": "Measure"
+    }
+  ],
+  "coverage": {
+    "items": [
+      {
+        "area": "extractor.calc_groups",
+        "icon": "\u26a0\ufe0f",
+        "notes": "Experimental coverage: node presence + expression dependencies.",
+        "pattern": "Calculation groups and items",
+        "status": "partial"
+      },
+      {
+        "area": "extractor.columns",
+        "icon": "\u26a0\ufe0f",
+        "notes": "ID model exists; parser wiring pending.",
+        "pattern": "Column extraction",
+        "status": "partial"
+      },
+      {
+        "area": "extractor.field_params",
+        "icon": "\u26a0\ufe0f",
+        "notes": "Experimental coverage: special table detection + dependencies.",
+        "pattern": "Field parameter tables",
+        "status": "partial"
+      },
+      {
+        "area": "extractor.measures",
+        "icon": "\u26a0\ufe0f",
+        "notes": "ID model supports table/no-table forms.",
+        "pattern": "Measure extraction",
+        "status": "partial"
+      },
+      {
+        "area": "extractor.relationships",
+        "icon": "\u26a0\ufe0f",
+        "notes": "Relationship objects extracted; graph edge wiring pending.",
+        "pattern": "Relationship extraction",
+        "status": "partial"
+      },
+      {
+        "area": "extractor.tables",
+        "icon": "\u2705",
+        "notes": "Canonical table IDs are defined.",
+        "pattern": "Table object extraction",
+        "status": "supported"
+      },
+      {
+        "area": "parser",
+        "icon": "\u2705",
+        "notes": "Path discovery flow planned in pbip_locator.",
+        "pattern": "Locate PBIP/TMDL files",
+        "status": "supported"
+      }
+    ],
+    "summary": {
+      "partial": 5,
+      "supported": 2,
+      "total": 7,
+      "unsupported": 0
+    }
+  },
+  "detected_changes": {
+    "added": 1,
+    "modified": 1,
+    "removed": 0,
+    "total": 2
+  },
+  "exposure": [
+    {
+      "changed_object_id": "Measure:Sales.Base",
+      "downstream_by_type": {
+        "Measure": 2
+      },
+      "downstream_count": 2,
+      "downstream_ids": [
+        "Measure:Sales.NewKpi",
+        "Measure:Sales.Total"
+      ],
+      "top_downstream_items": [
+        {
+          "name": "NewKpi",
+          "object_id": "Measure:Sales.NewKpi",
+          "type": "Measure"
+        },
+        {
+          "name": "Total",
+          "object_id": "Measure:Sales.Total",
+          "type": "Measure"
+        }
+      ]
+    },
+    {
+      "changed_object_id": "Measure:Sales.NewKpi",
+      "downstream_by_type": {},
+      "downstream_count": 0,
+      "downstream_ids": [],
+      "top_downstream_items": []
+    }
+  ],
+  "gaps": {
+    "known_gaps": [
+      {
+        "area": "extractor.calc_groups",
+        "notes": "Experimental coverage: node presence + expression dependencies.",
+        "pattern": "Calculation groups and items",
+        "status": "partial"
+      },
+      {
+        "area": "extractor.columns",
+        "notes": "ID model exists; parser wiring pending.",
+        "pattern": "Column extraction",
+        "status": "partial"
+      },
+      {
+        "area": "extractor.field_params",
+        "notes": "Experimental coverage: special table detection + dependencies.",
+        "pattern": "Field parameter tables",
+        "status": "partial"
+      },
+      {
+        "area": "extractor.measures",
+        "notes": "ID model supports table/no-table forms.",
+        "pattern": "Measure extraction",
+        "status": "partial"
+      },
+      {
+        "area": "extractor.relationships",
+        "notes": "Relationship objects extracted; graph edge wiring pending.",
+        "pattern": "Relationship extraction",
+        "status": "partial"
+      }
+    ],
+    "unknown_patterns": [],
+    "unresolved_refs": []
+  },
+  "model_key": "semanticmodel::fixtures/report_model/definition",
+  "new_snapshot_hash": "bb3dff3b3009541467738ee2a8b817181805abe6084820bc5f76e8181aec7cee",
+  "old_snapshot_hash": "7a90d1afa1ea2ffb4a4f91e9dbc72b858f43517221db10cb7e55c02d58ae81dc",
+  "run_id": "20260302_214533_exposure_fixture_1234abcd",
+  "schema_version": 1,
+  "tool_version": "0.1.0"
+}

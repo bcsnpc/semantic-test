@@ -1,0 +1,95 @@
+# Example semantic test file for the full_model fixture.
+# This file demonstrates all supported assertion types from PHASE2_SPEC.md.
+# It is NOT yet executable — the semantic-test test command is Phase 2.
+
+schema_version: 1
+model: ../tests/fixtures/pbip_samples/full_model
+
+tests:
+  # --- Object existence ---
+
+  - id: sales_table_exists
+    description: "Sales table must exist in the model"
+    assert: object_exists
+    object_id: "Table:Sales"
+
+  - id: date_table_exists
+    description: "Date table must exist in the model"
+    assert: object_exists
+    object_id: "Table:Date"
+
+  - id: total_sales_measure_exists
+    description: "Total Sales measure must exist in the Sales table"
+    assert: object_exists
+    object_id: "Measure:Sales.Total Sales"
+
+  - id: sales_yoy_measure_exists
+    description: "Sales YoY measure must exist in the Sales table"
+    assert: object_exists
+    object_id: "Measure:Sales.Sales YoY"
+
+  - id: running_total_measure_exists
+    description: "Running Total measure must exist in the Sales table"
+    assert: object_exists
+    object_id: "Measure:Sales.Running Total"
+
+  # --- Dependency assertions ---
+
+  - id: sales_yoy_depends_on_total_sales
+    description: "Sales YoY must transitively depend on Total Sales"
+    assert: depends_on
+    source: "Measure:Sales.Sales YoY"
+    target: "Measure:Sales.Total Sales"
+    transitive: true
+
+  - id: running_total_depends_on_total_sales
+    description: "Running Total must transitively depend on Total Sales"
+    assert: depends_on
+    source: "Measure:Sales.Running Total"
+    target: "Measure:Sales.Total Sales"
+    transitive: true
+
+  - id: total_sales_depends_on_amount_column
+    description: "Total Sales must directly depend on the Amount column"
+    assert: depends_on
+    source: "Measure:Sales.Total Sales"
+    target: "Column:Sales.Amount"
+    transitive: false
+
+  - id: total_sales_not_depends_on_date_column
+    description: "Total Sales must not depend on the Date column (no filter context)"
+    assert: not_depends_on
+    source: "Measure:Sales.Total Sales"
+    target: "Column:Date.Date"
+
+  # --- Relationship assertions ---
+
+  - id: sales_date_relationship_cardinality
+    description: "Sales-to-Date relationship must be many-to-one"
+    assert: relationship_property
+    relationship_id: "Relationship:Sales.DateKey->Date.DateKey"
+    property: cardinality
+    expected: manyToOne
+
+  - id: sales_date_relationship_active
+    description: "Sales-to-Date relationship must be active"
+    assert: relationship_property
+    relationship_id: "Relationship:Sales.DateKey->Date.DateKey"
+    property: is_active
+    expected: true
+
+  # --- Calculation group assertions ---
+
+  - id: time_calc_group_has_items
+    description: "Time Calc calculation group must have at least one calc item"
+    assert: calc_group_has_items
+    calc_group: "Time Calc"
+    min_items: 1
+
+  # --- Blast radius governance ---
+
+  - id: total_sales_blast_radius_bounded
+    description: "Total Sales downstream count must not exceed 10 objects"
+    assert: blast_radius_bounded
+    object_id: "Measure:Sales.Total Sales"
+    max_downstream: 10

@@ -1,0 +1,27 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Local tool outputs
+.semantic-test/
+scan_report.json
+scan_report.txt
+
+# IDE/system
+.DS_Store
+Thumbs.db
+
+# Power BI / PBIP artifacts (exclude per request)
+*.pbip
+*.pbir
+*.pbism
+*.abf
+.pbi/
+**/.pbi/
+**/*.SemanticModel/definition/
+**/*.Report/definition/
+
+# Local sample model folder
+vc_test1/
