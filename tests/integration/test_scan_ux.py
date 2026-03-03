@@ -90,6 +90,9 @@ class ScanUxIntegrationTests(unittest.TestCase):
                 for item in group.get("items", [])
             }
             self.assertTrue(unresolved_targets.isdisjoint(unsupported_targets))
+            self.assertEqual(payload["scan_input_path"], str(model_root))
+            self.assertIn("selected_model_definition_path", payload)
+            self.assertIn("models_detected_count", payload)
 
     def test_debug_mode_includes_coverage_matrix(self) -> None:
         with self.runner.isolated_filesystem():
@@ -104,6 +107,38 @@ class ScanUxIntegrationTests(unittest.TestCase):
             self.assertIn("Coverage Matrix", report_text)
             self.assertIn("debug", report_json)
             self.assertIn("coverage_matrix", report_json["debug"])
+            self.assertIn("resolution_traces", report_json["debug"])
+
+    def test_multi_model_next_actions_uses_explicit_model_path(self) -> None:
+        with self.runner.isolated_filesystem():
+            root = Path(".")
+            model_a = _write_model_with_unresolved(root / "A", "ModelA")
+            _write_model_clean(root / "B", "ModelB")
+
+            result = self.runner.invoke(app, ["scan", str(model_a)])
+            self.assertEqual(result.exit_code, 0, msg=result.stdout)
+
+            run_folder = _latest_run_folder(Path("A") / ".semantic-test" / "runs")
+            report_text = (run_folder / "report.txt").read_text(encoding="utf-8")
+            definition_path = (model_a / "definition").resolve()
+
+            self.assertIn(f"semantic-test scan {definition_path} --strict", report_text)
+            self.assertNotIn("semantic-test scan . --strict", report_text)
+
+    def test_multi_model_root_error_shows_specific_model_rerun_hint(self) -> None:
+        with self.runner.isolated_filesystem():
+            _write_model_clean(Path("A"), "ModelA")
+            _write_model_clean(Path("B"), "ModelB")
+
+            result = self.runner.invoke(app, ["scan", "."])
+            self.assertEqual(result.exit_code, 1, msg=result.stdout)
+            self.assertIn("Multiple definition folders found", result.stdout)
+
+            run_folder = _latest_run_folder(Path(".semantic-test") / "runs")
+            report_text = (run_folder / "report.txt").read_text(encoding="utf-8")
+            self.assertIn("Next Actions", report_text)
+            self.assertIn("semantic-test scan", report_text)
+            self.assertNotIn("semantic-test scan . --strict", report_text)
 
 
 def _write_model_clean(base: Path, model_name: str) -> Path:

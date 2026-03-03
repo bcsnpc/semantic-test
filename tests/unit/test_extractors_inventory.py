@@ -45,6 +45,76 @@ class ExtractorInventoryTests(unittest.TestCase):
         self.assertIn("Column:<unknown>.LooseColumn", column_inventory)
         self.assertFalse(column_inventory["Column:<unknown>.LooseColumn"]["has_known_table"])
 
+    def test_calc_column_implicit_current_table_resolution(self) -> None:
+        docs = [
+            (
+                "tables/Dim Date.tmdl",
+                "\n".join(
+                    [
+                        "table Dim Date",
+                        "\tcolumn Date",
+                        '\tcolumn Month Name = FORMAT([Date], "MMM")',
+                    ]
+                ),
+                "dummy",
+            )
+        ]
+        parsed = parse_tmdl_documents(docs)
+
+        column_inventory = extract_columns(parsed)
+        month_name = column_inventory["Column:Dim Date.Month Name"]
+
+        self.assertIn("Column:Dim Date.Date", month_name["dependencies"])
+        self.assertEqual(month_name["unknown_patterns"], [])
+        self.assertEqual(month_name["unresolved_references"], [])
+        self.assertEqual(month_name["ambiguous_reference_count"], 0)
+        self.assertTrue(month_name["resolution_assumptions"])
+
+    def test_calc_column_missing_unqualified_column_stays_unresolved(self) -> None:
+        docs = [
+            (
+                "tables/T.tmdl",
+                "\n".join(
+                    [
+                        "table T",
+                        '\tcolumn Label = FORMAT([NotThere], "MMM")',
+                    ]
+                ),
+                "dummy",
+            )
+        ]
+        parsed = parse_tmdl_documents(docs)
+
+        column_inventory = extract_columns(parsed)
+        label = column_inventory["Column:T.Label"]
+
+        self.assertEqual(label["dependencies"], set())
+        self.assertIn("unresolved_column:[NotThere]", label["unknown_patterns"])
+        self.assertEqual(label["unresolved_references"][0]["ref"], "[NotThere]")
+
+    def test_calc_column_qualified_ref_remains_qualified(self) -> None:
+        docs = [
+            (
+                "tables/T.tmdl",
+                "\n".join(
+                    [
+                        "table Other",
+                        "\tcolumn Date",
+                        "table T",
+                        "\tcolumn Label = FORMAT('Other'[Date], \"MMM\")",
+                    ]
+                ),
+                "dummy",
+            )
+        ]
+        parsed = parse_tmdl_documents(docs)
+
+        column_inventory = extract_columns(parsed)
+        label = column_inventory["Column:T.Label"]
+
+        self.assertIn("Column:Other.Date", label["dependencies"])
+        self.assertEqual(label["unknown_patterns"], [])
+
     def test_extracts_single_relationship_with_canonical_id(self) -> None:
         docs = [
             (

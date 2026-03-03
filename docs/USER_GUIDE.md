@@ -40,6 +40,25 @@ Install:
 pip install "git+https://github.com/bcsnpc/semantic-test.git"
 ```
 
+## 3A. Update the Tool Later (No Manual Uninstall Needed)
+
+If you already installed once, run this to get latest code from GitHub:
+
+```powershell
+pip install --upgrade --no-cache-dir "git+https://github.com/bcsnpc/semantic-test.git"
+```
+
+Notes:
+- You do NOT need to uninstall first.
+- This updates your current installed package to the latest commit/tag available.
+
+If you installed from a local clone using `pip install -e .`, then update by:
+
+```powershell
+cd <your-local-semantic-test-repo>
+git pull
+```
+
 ## 4. First Command to Try
 
 Try this first:

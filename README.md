@@ -33,9 +33,37 @@ All outputs should be interpreted as structural exposure only.
 Requirements:
 - Python 3.10+
 
+Install from GitHub:
+
+```bash
+pip install "git+https://github.com/bcsnpc/semantic-test.git"
+```
+
+If `semantic-test` is not available on PATH, run with module style:
+
+```bash
+python -m semantic_test.cli.main --help
+```
+
+Install for local development (editable):
+
 ```bash
 pip install -e .
 semantic-test --help
+```
+
+## Update (Without Manual Uninstall)
+
+If already installed from GitHub, update in place:
+
+```bash
+pip install --upgrade --no-cache-dir "git+https://github.com/bcsnpc/semantic-test.git"
+```
+
+If using editable clone (`pip install -e .`), just pull latest code:
+
+```bash
+git pull
 ```
 
 ## Commands and Examples

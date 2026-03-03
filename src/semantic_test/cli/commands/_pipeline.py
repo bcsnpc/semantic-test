@@ -18,7 +18,10 @@ from semantic_test.core.parse.extractors.field_params import extract_field_param
 from semantic_test.core.parse.extractors.measures import extract_measures
 from semantic_test.core.parse.extractors.relationships import extract_relationships
 from semantic_test.core.parse.extractors.tables import extract_tables
-from semantic_test.core.parse.pbip_locator import locate_definition_folder
+from semantic_test.core.parse.pbip_locator import (
+    discover_definition_folders,
+    locate_definition_folder,
+)
 from semantic_test.core.parse.tmdl_parser import ParsedModel, parse_tmdl_documents
 from semantic_test.core.parse.tmdl_reader import TmdlDocument, read_tmdl_documents
 
@@ -28,8 +31,12 @@ class ModelArtifacts:
     """All derived artifacts for a single model input."""
 
     definition_folder: str
+    scan_input_path: str
     definition_path: str
     model_key: str
+    selected_model_definition_path: str
+    models_detected_count: int
+    models_detected: list[dict[str, str]]
     documents: list[TmdlDocument]
     parsed_model: ParsedModel
     table_inventory: dict[str, dict[str, Any]]
@@ -47,9 +54,20 @@ class ModelArtifacts:
 def build_model_artifacts(input_path: str) -> ModelArtifacts:
     """Build parsed/extracted/graph/snapshot artifacts from a model path."""
     project_root = resolve_project_root(input_path)
+    discovered = discover_definition_folders(input_path)
     definition_folder = str(locate_definition_folder(input_path))
     definition_path = normalize_definition_path(definition_folder, project_root=project_root)
     model_key = build_model_key(definition_folder, project_root=project_root)
+    selected_model_definition_path = definition_folder
+    detected_models: list[dict[str, str]] = []
+    for definition_candidate in discovered:
+        detected_models.append(
+            {
+                "model_key": build_model_key(str(definition_candidate), project_root=project_root),
+                "definition_path": str(definition_candidate),
+            }
+        )
+    detected_models.sort(key=lambda item: item["definition_path"])
     documents = read_tmdl_documents(definition_folder)
     parsed_model = parse_tmdl_documents(documents)
 
@@ -79,8 +97,12 @@ def build_model_artifacts(input_path: str) -> ModelArtifacts:
     )
     return ModelArtifacts(
         definition_folder=definition_folder,
+        scan_input_path=str(input_path),
         definition_path=definition_path,
         model_key=model_key,
+        selected_model_definition_path=selected_model_definition_path,
+        models_detected_count=len(detected_models),
+        models_detected=detected_models,
         documents=documents,
         parsed_model=parsed_model,
         table_inventory=table_inventory,

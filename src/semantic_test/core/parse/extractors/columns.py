@@ -7,7 +7,7 @@ from typing import Any
 from semantic_test.core.model.objects import ObjectRef, ObjectType
 from semantic_test.core.parse.extractors.measures import (
     build_reference_registry,
-    extract_expression_dependencies,
+    extract_expression_analysis,
 )
 from semantic_test.core.parse.tmdl_parser import ParsedModel
 
@@ -25,12 +25,23 @@ def extract_columns(parsed: ParsedModel) -> dict[str, dict[str, Any]]:
         expression = column.expression or ""
         dependencies: set[str] = set()
         unknown_patterns: list[str] = []
+        unresolved_references: list[dict[str, str]] = []
+        resolution_assumptions: list[str] = []
+        ambiguous_reference_count = 0
         if expression:
-            dependencies, unknown_patterns = extract_expression_dependencies(
+            analysis = extract_expression_analysis(
                 expression=expression,
                 current_table=table_name,
+                current_object_id=object_key,
+                current_object_name=column.name,
+                expression_context="calculated_column",
                 reference_registry=registry,
             )
+            dependencies = analysis.dependencies
+            unknown_patterns = analysis.unknown_patterns
+            unresolved_references = analysis.unresolved_references
+            resolution_assumptions = analysis.resolution_assumptions
+            ambiguous_reference_count = analysis.ambiguous_reference_count
         inventory[object_key] = {
             "id": object_key,
             "type": ObjectType.COLUMN.value,
@@ -39,6 +50,9 @@ def extract_columns(parsed: ParsedModel) -> dict[str, dict[str, Any]]:
             "expression": expression or None,
             "dependencies": dependencies,
             "unknown_patterns": unknown_patterns,
+            "unresolved_references": unresolved_references,
+            "resolution_assumptions": resolution_assumptions,
+            "ambiguous_reference_count": ambiguous_reference_count,
             "source_file": column.source_file,
             "has_known_table": column.table is not None,
             "object_ref": ref,

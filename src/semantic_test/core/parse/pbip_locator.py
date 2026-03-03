@@ -10,21 +10,9 @@ MAX_SEARCH_DEPTH = 6
 
 def locate_definition_folder(input_path: str | Path) -> Path:
     """Locate a ``*.SemanticModel/definition`` folder from a root or direct path."""
-    path = Path(input_path).expanduser().resolve()
-    if not path.exists():
-        raise FileNotFoundError(f"Input path does not exist: {path}")
-    if path.is_file():
-        raise ValueError(f"Input path must be a directory: {path}")
-
-    if path.name == "definition":
-        return path
-
-    semantic_model_definition = path / "definition"
-    if path.name.endswith(".SemanticModel") and semantic_model_definition.is_dir():
-        return semantic_model_definition.resolve()
-
-    matches = _find_definition_folders(path, max_depth=MAX_SEARCH_DEPTH)
+    matches = discover_definition_folders(input_path)
     if not matches:
+        path = Path(input_path).expanduser().resolve()
         raise FileNotFoundError(
             f"No '*.SemanticModel/definition' folder found under: {path}"
         )
@@ -32,6 +20,25 @@ def locate_definition_folder(input_path: str | Path) -> Path:
         formatted = ", ".join(str(candidate) for candidate in matches)
         raise ValueError(f"Multiple definition folders found: {formatted}")
     return matches[0]
+
+
+def discover_definition_folders(input_path: str | Path) -> list[Path]:
+    """Discover candidate ``*.SemanticModel/definition`` folders for an input path."""
+    path = Path(input_path).expanduser().resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"Input path does not exist: {path}")
+    if path.is_file():
+        raise ValueError(f"Input path must be a directory: {path}")
+
+    if path.name == "definition":
+        return [path]
+
+    semantic_model_definition = path / "definition"
+    if path.name.endswith(".SemanticModel") and semantic_model_definition.is_dir():
+        return [semantic_model_definition.resolve()]
+
+    matches = _find_definition_folders(path, max_depth=MAX_SEARCH_DEPTH)
+    return matches
 
 
 def _find_definition_folders(root: Path, max_depth: int) -> list[Path]:

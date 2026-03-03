@@ -24,9 +24,10 @@ from semantic_test.core.io.output_manager import (
     write_text,
 )
 from semantic_test.core.model.coverage import coverage_report
-from semantic_test.core.model.model_key import resolve_project_root
+from semantic_test.core.model.model_key import build_model_key, resolve_project_root
+from semantic_test.core.parse.pbip_locator import discover_definition_folders
 
-SCAN_SCHEMA_VERSION = 2
+SCAN_SCHEMA_VERSION = 3
 
 
 def scan_command(
@@ -55,11 +56,14 @@ def scan_command(
         snapshot_hash="pending",
         now=now,
     )
+
+    discovery = _discover_models(input_path)
     manifest: dict[str, object] = {
         "version": "0.1",
         "command": "scan",
         "timestamp_utc": now.isoformat(),
         "input_path": input_path,
+        "scan_input_path": input_path,
         "output_format": output_format,
         "stdout": stdout_format,
         "no_index": no_index,
@@ -70,6 +74,8 @@ def scan_command(
         "error": None,
         "snapshot_hash": None,
         "run_folder": str(run_folder),
+        "models_detected_count": discovery["models_detected_count"],
+        "models_detected": discovery["models_detected"],
     }
 
     coverage_lines, coverage_data = coverage_report()
@@ -86,6 +92,11 @@ def scan_command(
             "status": "ERROR",
             "definition_path": input_path,
             "model_key": "semanticmodel::unknown",
+            "scan_input_path": input_path,
+            "selected_model_key": None,
+            "selected_model_definition_path": None,
+            "models_detected_count": discovery["models_detected_count"],
+            "models_detected": discovery["models_detected"],
             "summary": {},
             "issues": {
                 "unresolved_references": [],
@@ -95,7 +106,7 @@ def scan_command(
             "error": message,
         }
         report_json = json.dumps(report_json_obj, indent=2, sort_keys=True)
-        report_text = _error_report_text(message)
+        report_text = _error_report_text(message, discovery=discovery)
         write_text(run_folder, "snapshot.json", json.dumps({"status": "ERROR", "error": message}, indent=2, sort_keys=True))
         write_text(run_folder, "report.txt", report_text)
         write_text(run_folder, "report.json", report_json)
@@ -105,10 +116,7 @@ def scan_command(
         typer.echo(f"Saved reports to: {run_folder}")
         raise typer.Exit(code=1)
 
-    unresolved_groups = _build_unresolved_issue_groups(
-        unresolved_refs=artifacts.snapshot.unresolved_refs,
-        objects=artifacts.objects,
-    )
+    unresolved_groups = _build_unresolved_issue_groups(objects=artifacts.objects)
     unsupported_groups = _build_unsupported_issue_groups(
         unknown_patterns=artifacts.unknown_patterns,
         objects=artifacts.objects,
@@ -124,6 +132,15 @@ def scan_command(
         1 for item in artifacts.calc_group_inventory.values() if item.get("type") == "CalcItem"
     )
 
+    resolution_assumption_count, resolution_assumption_traces = _resolution_assumptions(artifacts.objects)
+    ambiguous_reference_count = _ambiguous_reference_count(artifacts.objects, unresolved_groups)
+
+    strict_fail_reasons = {
+        "unresolved_references": unresolved_count,
+        "unsupported_reference_patterns": unsupported_count,
+        "parser_coverage_gaps_treated_as_errors": 0,
+    }
+
     summary = {
         "objects": len(artifacts.objects),
         "tables": len(artifacts.table_inventory),
@@ -137,6 +154,8 @@ def scan_command(
         "graph_edges": artifacts.graph.edge_count,
         "unresolved_references": unresolved_count,
         "unsupported_reference_patterns": unsupported_count,
+        "resolution_assumptions_applied": resolution_assumption_count,
+        "ambiguous_references": ambiguous_reference_count,
     }
 
     top_hubs = _top_dependency_hubs(artifacts.objects, artifacts.graph.reverse, top_n=10)
@@ -146,11 +165,17 @@ def scan_command(
         "status": status,
         "definition_path": artifacts.definition_folder,
         "model_key": artifacts.model_key,
+        "scan_input_path": input_path,
+        "selected_model_key": artifacts.model_key,
+        "selected_model_definition_path": artifacts.selected_model_definition_path,
+        "models_detected_count": artifacts.models_detected_count,
+        "models_detected": artifacts.models_detected,
         "summary": summary,
         "issues": {
             "unresolved_references": unresolved_groups,
             "unsupported_reference_patterns": unsupported_groups,
         },
+        "strict_fail_reasons": strict_fail_reasons,
         "top_dependency_hubs": top_hubs,
     }
     if debug:
@@ -160,6 +185,7 @@ def scan_command(
             "internal_notes": coverage_lines,
             "raw_patterns": artifacts.unknown_patterns,
             "raw_unresolved_refs": artifacts.snapshot.unresolved_refs,
+            "resolution_traces": resolution_assumption_traces,
         }
 
     report_text = _render_text(
@@ -171,9 +197,14 @@ def scan_command(
         unsupported_groups=unsupported_groups,
         top_hubs=top_hubs,
         strict=strict,
+        strict_fail_reasons=strict_fail_reasons,
         debug=debug,
         show_all=show_all,
         coverage_lines=coverage_lines,
+        scan_input_path=input_path,
+        selected_model_definition_path=artifacts.selected_model_definition_path,
+        models_detected_count=artifacts.models_detected_count,
+        resolution_assumption_traces=resolution_assumption_traces,
     )
     report_json = json.dumps(report_json_obj, indent=2, sort_keys=True)
     snapshot_json = json.dumps(asdict(artifacts.snapshot), indent=2, sort_keys=True)
@@ -205,6 +236,7 @@ def scan_command(
     manifest["unsupported_reference_pattern_count"] = unsupported_count
     manifest["unresolved_ref_count"] = unresolved_count
     manifest["model_key"] = artifacts.model_key
+    manifest["selected_model_definition_path"] = artifacts.selected_model_definition_path
     write_manifest(run_folder, manifest)
 
     typer.echo(f"Saved reports to: {run_folder}")
@@ -213,6 +245,7 @@ def scan_command(
         manifest["strict_policy_failures"] = [
             f"unresolved_references:{unresolved_count}",
             f"unsupported_reference_patterns:{unsupported_count}",
+            "parser_coverage_gaps_treated_as_errors:0",
         ]
         write_manifest(run_folder, manifest)
         raise typer.Exit(code=2)
@@ -228,9 +261,14 @@ def _render_text(
     unsupported_groups: list[dict[str, Any]],
     top_hubs: list[dict[str, Any]],
     strict: bool,
+    strict_fail_reasons: dict[str, int],
     debug: bool,
     show_all: bool,
     coverage_lines: list[str],
+    scan_input_path: str,
+    selected_model_definition_path: str,
+    models_detected_count: int,
+    resolution_assumption_traces: list[str],
 ) -> str:
     lines: list[str] = [
         f"semantic-test Scan Report (v{__version__})",
@@ -251,6 +289,8 @@ def _render_text(
             f"Graph: Nodes: {summary['graph_nodes']} | Edges: {summary['graph_edges']}",
             f"Unresolved References: {summary['unresolved_references']}",
             f"Unsupported Reference Patterns: {summary['unsupported_reference_patterns']}",
+            f"Resolution Assumptions Applied: {summary['resolution_assumptions_applied']}",
+            f"Ambiguous References: {summary['ambiguous_references']}",
         ]
     )
 
@@ -258,6 +298,13 @@ def _render_text(
         lines.append(f"Strict Mode: {'PASS' if status == 'CLEAN' else 'FAIL'}")
     elif status == "STRUCTURAL_ISSUES":
         lines.append("Strict Mode: would FAIL (run with --strict to gate CI)")
+
+    lines.append(
+        "Strict fail reasons: "
+        f"{strict_fail_reasons['unresolved_references']} unresolved refs, "
+        f"{strict_fail_reasons['unsupported_reference_patterns']} unsupported patterns, "
+        f"{strict_fail_reasons['parser_coverage_gaps_treated_as_errors']} parser coverage gaps treated as errors"
+    )
 
     if summary["unresolved_references"] > 0 or summary["unsupported_reference_patterns"] > 0:
         lines.extend(["", "Issues", "------"])
@@ -285,16 +332,25 @@ def _render_text(
         for hub in top_hubs:
             lines.append(f"{hub['measure_id']} -> {hub['downstream_count']} downstream objects")
 
+    strict_target = selected_model_definition_path
+    debug_target = selected_model_definition_path
+
     lines.extend(["", "Next Actions", "------------"])
     if status == "STRUCTURAL_ISSUES":
-        lines.append("- Fix unresolved references and re-run: semantic-test scan . --strict")
-        lines.append("- For parser/coverage diagnostics: semantic-test scan . --debug")
+        lines.append(f"- Re-run this specific model: semantic-test scan {strict_target} --strict")
+        if models_detected_count == 1 and scan_input_path != selected_model_definition_path:
+            lines.append(f"- Re-run using your original input path: semantic-test scan {scan_input_path} --strict")
+        lines.append(f"- For parser/coverage diagnostics: semantic-test scan {debug_target} --debug")
     else:
-        lines.append("- Model is structurally clean. You can gate CI with: semantic-test scan . --strict")
+        lines.append(f"- Model is structurally clean. Gate CI with: semantic-test scan {strict_target} --strict")
 
     if debug:
         lines.extend(["", "Details", "-------", "Coverage Matrix"])
         lines.extend(coverage_lines)
+        if resolution_assumption_traces:
+            lines.extend(["", "Resolution Trace"])
+            for trace in resolution_assumption_traces:
+                lines.append(f"- {trace}")
         lines.extend(["", "Full Issues (Debug)"])
         lines.extend(
             _render_issue_section(
@@ -331,9 +387,17 @@ def _render_issue_section(
     limit = len(groups) if show_all else 10
     displayed = groups[:limit]
     for group in displayed:
-        lines.append(_display_object_id(group["source_object_id"]))
+        lines.append(f"{group['source_object_name']} ({group['source_object_type']})")
+        snippet = group.get("expression_snippet")
+        if snippet:
+            lines.append(f"  expression: {snippet}")
         for item in group["items"]:
-            lines.append(f"  - {item_label}: {item['target']}")
+            lines.append(
+                "  - "
+                f"{item_label}: {item['target']} | "
+                f"reason: {item.get('reason', 'n/a')} | "
+                f"severity: {item.get('severity', 'ERROR')}"
+            )
     remaining = len(groups) - len(displayed)
     if remaining > 0:
         lines.append(f"(+{remaining} more; re-run with --show-all)")
@@ -342,26 +406,63 @@ def _render_issue_section(
 
 def _build_unresolved_issue_groups(
     *,
-    unresolved_refs: list[dict[str, Any]],
     objects: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    grouped: dict[str, list[dict[str, str]]] = {}
-    for entry in unresolved_refs:
-        source = str(entry.get("object_id", "")).strip()
-        ref = str(entry.get("ref", "")).strip()
-        if not source or not ref:
-            continue
-        target = _extract_missing_target(ref)
-        grouped.setdefault(source, []).append({"kind": "missing", "target": target})
-
     output: list[dict[str, Any]] = []
-    for source in sorted(grouped.keys()):
-        items = sorted(grouped[source], key=lambda item: item["target"])
+    for source in sorted(objects.keys()):
+        metadata = objects[source]
+        explicit_items = metadata.get("unresolved_references", [])
+        items: list[dict[str, Any]] = []
+        if isinstance(explicit_items, list):
+            for raw in explicit_items:
+                if not isinstance(raw, dict):
+                    continue
+                target = str(raw.get("ref", "")).strip()
+                if not target:
+                    continue
+                items.append(
+                    {
+                        "kind": "missing",
+                        "target": target,
+                        "reason": str(raw.get("reason", "Missing reference")),
+                        "severity": str(raw.get("severity", "ERROR")),
+                    }
+                )
+
+        if not items:
+            patterns = metadata.get("unknown_patterns", [])
+            if isinstance(patterns, list):
+                for pattern in patterns:
+                    text = str(pattern).strip()
+                    if text.startswith("unresolved_measure:") or text.startswith("unresolved_column:"):
+                        items.append(
+                            {
+                                "kind": "missing",
+                                "target": text.split(":", maxsplit=1)[1],
+                                "reason": "Reference could not be resolved.",
+                                "severity": "ERROR",
+                            }
+                        )
+                    if text.startswith("ambiguous_column:"):
+                        items.append(
+                            {
+                                "kind": "ambiguous",
+                                "target": text.split(":", maxsplit=1)[1],
+                                "reason": "Ambiguous reference resolved to multiple candidate columns.",
+                                "severity": "ERROR",
+                            }
+                        )
+
+        if not items:
+            continue
+
         output.append(
             {
                 "source_object_id": source,
-                "source_object_type": _object_type_from_id(source, objects),
-                "items": items,
+                "source_object_name": _display_object_id(source),
+                "source_object_type": _object_kind(metadata),
+                "expression_snippet": _expression_snippet(metadata),
+                "items": sorted(items, key=lambda item: item["target"]),
             }
         )
     return output
@@ -382,41 +483,112 @@ def _build_unsupported_issue_groups(
             pattern_text = str(pattern).strip()
             if not pattern_text:
                 continue
-            if pattern_text.startswith("unresolved_measure:"):
+            if pattern_text.startswith("unresolved_") or pattern_text.startswith("ambiguous_"):
                 continue
             grouped.setdefault(source, set()).add(pattern_text)
 
     output: list[dict[str, Any]] = []
     for source in sorted(grouped.keys()):
+        metadata = objects.get(source, {})
         items = [
-            {"kind": "unsupported", "target": pattern}
+            {
+                "kind": "unsupported",
+                "target": pattern,
+                "reason": "Coverage gap in parser/extractor.",
+                "severity": "WARN",
+            }
             for pattern in sorted(grouped[source])
         ]
         output.append(
             {
                 "source_object_id": source,
-                "source_object_type": _object_type_from_id(source, objects),
+                "source_object_name": _display_object_id(source),
+                "source_object_type": _object_kind(metadata),
+                "expression_snippet": _expression_snippet(metadata),
                 "items": items,
             }
         )
     return output
 
 
-def _extract_missing_target(ref: str) -> str:
-    if ref.startswith("unresolved_measure:"):
-        return ref.split(":", maxsplit=1)[1]
-    return ref
+def _object_kind(metadata: dict[str, Any]) -> str:
+    object_type = str(metadata.get("type", "Unknown")).strip()
+    expression = _expression_text(metadata)
+    if object_type == "Column" and expression:
+        return "Calculated Column"
+    if object_type == "Measure":
+        return "Measure"
+    if object_type == "Relationship":
+        return "Relationship"
+    if object_type == "CalcItem":
+        return "Calculation Item"
+    if object_type == "CalcGroup":
+        return "Calculation Group"
+    return object_type or "Unknown"
 
 
-def _object_type_from_id(object_id: str, objects: dict[str, dict[str, Any]]) -> str:
-    metadata = objects.get(object_id, {})
-    type_from_metadata = str(metadata.get("type", "")).strip()
-    if type_from_metadata:
-        return type_from_metadata
-    if ":" not in object_id:
-        return "Unknown"
-    prefix = object_id.split(":", maxsplit=1)[0]
-    return prefix or "Unknown"
+def _expression_text(metadata: dict[str, Any]) -> str:
+    expression = str(metadata.get("expression") or metadata.get("raw_expression") or "").strip()
+    return expression
+
+
+def _expression_snippet(metadata: dict[str, Any], limit: int = 120) -> str | None:
+    expression = _expression_text(metadata)
+    if not expression:
+        return None
+    normalized = " ".join(expression.split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[:limit].rstrip() + "..."
+
+
+def _resolution_assumptions(
+    objects: dict[str, dict[str, Any]],
+) -> tuple[int, list[str]]:
+    traces: list[str] = []
+    for metadata in objects.values():
+        assumptions = metadata.get("resolution_assumptions", [])
+        if not isinstance(assumptions, list):
+            continue
+        traces.extend(str(item) for item in assumptions if str(item).strip())
+    return len(traces), sorted(traces)
+
+
+def _ambiguous_reference_count(
+    objects: dict[str, dict[str, Any]],
+    unresolved_groups: list[dict[str, Any]],
+) -> int:
+    explicit = 0
+    for metadata in objects.values():
+        explicit += int(metadata.get("ambiguous_reference_count", 0) or 0)
+    if explicit > 0:
+        return explicit
+
+    inferred = 0
+    for group in unresolved_groups:
+        for item in group.get("items", []):
+            if item.get("kind") == "ambiguous" or "Ambiguous" in str(item.get("reason", "")):
+                inferred += 1
+    return inferred
+
+
+def _discover_models(input_path: str) -> dict[str, Any]:
+    try:
+        project_root = resolve_project_root(input_path)
+        definitions = discover_definition_folders(input_path)
+    except (FileNotFoundError, ValueError):
+        return {"models_detected_count": 0, "models_detected": []}
+
+    models: list[dict[str, str]] = []
+    for definition in definitions:
+        models.append(
+            {
+                "model_key": build_model_key(str(definition), project_root=project_root),
+                "definition_path": str(definition),
+            }
+        )
+    models.sort(key=lambda item: item["definition_path"])
+    return {"models_detected_count": len(models), "models_detected": models}
 
 
 def _scan_status(unresolved_count: int, unsupported_count: int) -> str:
@@ -459,14 +631,21 @@ def _display_object_id(object_id: str) -> str:
     return object_id
 
 
-def _error_report_text(message: str) -> str:
-    return "\n".join(
-        [
-            f"semantic-test Scan Report (v{__version__})",
-            "Status: ERROR",
-            f"Error: {message}",
-        ]
-    )
+def _error_report_text(message: str, discovery: dict[str, Any] | None = None) -> str:
+    lines = [
+        f"semantic-test Scan Report (v{__version__})",
+        "Status: ERROR",
+        f"Error: {message}",
+    ]
+    models = (discovery or {}).get("models_detected", [])
+    if isinstance(models, list) and len(models) > 1:
+        lines.extend(["", "Next Actions", "------------"])
+        first = models[0]
+        lines.append(
+            "Multiple models were detected. Re-run a specific model, for example: "
+            f"semantic-test scan {first.get('definition_path', '<definition_path>')} --strict"
+        )
+    return "\n".join(lines)
 
 
 def _emit_error(stdout_format: str, message: str) -> None:
