@@ -1,332 +1,179 @@
 ﻿# semantic-test User Guide (Beginner-Friendly)
 
-Last updated: 2026-03-03
+Last updated: 2026-03-04
 
-This guide is written for users who are new to PowerShell.
-It gives exact commands to copy and run.
+This guide is written for first-time PowerShell users.
+All commands are copy/paste ready.
 
-## 1. What This Tool Does
+## 1. What This Tool Is
 
-`semantic-test` checks the **structure** of a Power BI semantic model (PBIP/TMDL).
+`semantic-test` checks **model structure** for Power BI semantic models (PBIP/TMDL).
 
-It helps you answer:
-- What tables/columns/measures exist?
-- What changed between two model folders?
-- Which downstream objects are impacted by those changes?
-- What dependencies does a specific measure/object have?
+It answers:
+- What objects exist?
+- What changed?
+- What is impacted downstream?
+- What references are unresolved, and what are likely fixes?
 
-It does **not** execute DAX and does not validate business KPI correctness.
+It does **not** run DAX or validate KPI business correctness.
 
-## 2. Before You Start
-
-You need:
-- Windows PowerShell
-- Python 3.10+
-- Internet access (for install from GitHub)
-
-Check Python:
-
-```powershell
-python --version
-```
-
-If Python is not found, install Python first.
-
-## 3. Install the Tool from GitHub
-
-Install:
+## 2. Install
 
 ```powershell
 pip install "git+https://github.com/bcsnpc/semantic-test.git"
 ```
 
-## 3A. Update the Tool Later (No Manual Uninstall Needed)
-
-If you already installed once, run this to get latest code from GitHub:
-
-```powershell
-pip install --upgrade --no-cache-dir "git+https://github.com/bcsnpc/semantic-test.git"
-```
-
-Notes:
-- You do NOT need to uninstall first.
-- This updates your current installed package to the latest commit/tag available.
-
-If you installed from a local clone using `pip install -e .`, then update by:
-
-```powershell
-cd <your-local-semantic-test-repo>
-git pull
-```
-
-## 4. First Command to Try
-
-Try this first:
+If `semantic-test` is not found, use module mode (always works):
 
 ```powershell
 python -m semantic_test.cli.main --help
 ```
 
-Why this command?
-- It works even when `semantic-test` is not in PATH.
-- It is the safest default command style for beginners.
-
-## 5. If `semantic-test` Command Is Not Found
-
-You may see:
-- `semantic-test : The term 'semantic-test' is not recognized...`
-
-This means your Python Scripts folder is not on PATH.
-
-### Option A (recommended): keep using module style
-
-Use this pattern always:
+## 3. Update Later (No Uninstall Needed)
 
 ```powershell
-python -m semantic_test.cli.main <command> ...
+pip install --upgrade --no-cache-dir "git+https://github.com/bcsnpc/semantic-test.git"
 ```
 
-### Option B: add Scripts folder to PATH
-
-Run this once:
+If you use editable local repo install (`pip install -e .`):
 
 ```powershell
-$scriptPath = "C:\Users\$env:USERNAME\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\Scripts"
-[Environment]::SetEnvironmentVariable("Path", $env:Path + ";$scriptPath", "User")
+cd <repo>
+git pull
 ```
 
-Then close PowerShell and open a new window.
+## 4. Most Important Rule
 
-Now test:
+Do **not** run `scan .` in a folder containing many models.
+Use a specific model path.
+
+Example:
 
 ```powershell
-semantic-test --help
+python -m semantic_test.cli.main scan "D:\Projects\semantic_test\vc_test1"
 ```
 
-## 6. Most Important Rule (Avoid Common Error)
+## 5. Phase-1 Commands
 
-Do **not** run `scan .` in a repo that has multiple models.
-
-If you do, you can get:
-- `Multiple definition folders found ...`
-
-Always pass a specific model folder path, for example:
-
-```powershell
-python -m semantic_test.cli.main scan D:\Projects\semantic_test\vc_test1
-```
-
-## 7. Commands (All Current Functions)
-
-Current commands in v0.1.0:
 - `scan`
 - `diff`
 - `exposure`
 - `trace`
 
-`semantic-test test ...` is not implemented yet.
+Phase-2 `semantic-test test` is not implemented yet.
 
-### 7.1 `scan` - Analyze one model
+## 6. Command Examples
 
-Purpose:
-- Builds inventory and dependency graph
-- Finds unresolved references and unsupported patterns
-- Writes reports
-
-Run:
+### Scan
 
 ```powershell
-python -m semantic_test.cli.main scan <model_path>
+python -m semantic_test.cli.main scan "D:\Projects\semantic_test\vc_test1"
+python -m semantic_test.cli.main scan "D:\Projects\semantic_test\vc_test1" --strict
+python -m semantic_test.cli.main scan "D:\Projects\semantic_test\vc_test1" --debug
 ```
 
-Example:
+### Diff
 
 ```powershell
-python -m semantic_test.cli.main scan D:\Projects\semantic_test\vc_test1
+python -m semantic_test.cli.main diff "D:\Projects\semantic_test\vc_test1" "D:\vc_test1"
+python -m semantic_test.cli.main diff "D:\Projects\semantic_test\vc_test1" "D:\vc_test1" --format json
 ```
 
-Useful options:
+### Exposure
 
 ```powershell
-python -m semantic_test.cli.main scan <model_path> --strict
-python -m semantic_test.cli.main scan <model_path> --debug
-python -m semantic_test.cli.main scan <model_path> --show-all
-python -m semantic_test.cli.main scan <model_path> --stdout json
-python -m semantic_test.cli.main scan <model_path> --stdout none
-python -m semantic_test.cli.main scan <model_path> --no-index
-python -m semantic_test.cli.main scan <model_path> --outdir D:\temp\semantic-out
+python -m semantic_test.cli.main exposure "D:\Projects\semantic_test\vc_test1" "D:\vc_test1" --json
 ```
 
-Expected status values:
+### Trace
+
+```powershell
+python -m semantic_test.cli.main trace "Measure:Metrics.Total CSR Chats" "D:\Projects\semantic_test\vc_test1" --depth 5
+```
+
+## 7. Understanding Scan Output
+
+Common statuses:
 - `CLEAN`
 - `STRUCTURAL_ISSUES`
 - `ERROR`
 
-### 7.2 `diff` - Compare two model folders
+For unresolved references, scan now shows:
+- reason + severity
+- `expected_type`, `expected_scope`, `likely_cause`
+- `action` (what to do next)
+- `best_guess` and score (when confidence is high)
+- scored `did_you_mean_top3`
+- optional suggested fix options with combined score
 
-Purpose:
-- Shows added/removed/modified objects between two model versions
+Example action values:
+- `RENAME_REFERENCE`
+- `QUALIFY_REFERENCE`
+- `ADD_MISSING_OBJECT`
+- `MANUAL_REVIEW`
 
-Run:
+## 8. Next Actions Block (Important)
 
-```powershell
-python -m semantic_test.cli.main diff <before_path> <after_path>
-```
+The tool now prints copy/paste commands that match how you ran it.
 
-Example:
+If you run with module mode, it will suggest:
+- `python -m semantic_test.cli.main ...`
 
-```powershell
-python -m semantic_test.cli.main diff D:\Projects\semantic_test\vc_test1 D:\vc_test1
-```
+If CLI is installed, it may also show:
+- `semantic-test ...`
 
-Useful options:
+All paths are quoted to handle spaces.
 
-```powershell
-python -m semantic_test.cli.main diff <before> <after> --format json
-python -m semantic_test.cli.main diff <before> <after> --strict
-python -m semantic_test.cli.main diff <before> <after> --out D:\temp\diff.json
-```
+If CLI is missing, scan shows this quick hint:
+- `Install CLI entrypoint (dev): pip install -e .`
 
-Auto-previous mode (single argument):
+## 9. Output Files
 
-```powershell
-python -m semantic_test.cli.main scan <model_path> --stdout none
-python -m semantic_test.cli.main diff <model_path>
-```
+Per run, files are written to:
 
-### 7.3 `exposure` - Blast radius from changes
+- `<model_root>\.semantic-test\runs\<RUN_ID>\report.txt`
+- `<model_root>\.semantic-test\runs\<RUN_ID>\report.json`
+- `<model_root>\.semantic-test\runs\<RUN_ID>\snapshot.json`
+- `<model_root>\.semantic-test\runs\<RUN_ID>\manifest.json`
 
-Purpose:
-- Lists downstream impacted objects for each changed object
+Index file:
+- `<model_root>\.semantic-test\index.json`
 
-Run:
+## 10. Exit Codes
 
-```powershell
-python -m semantic_test.cli.main exposure <before_path> <after_path>
-```
+- `0` success
+- `1` runtime/tool error
+- `2` strict structural violations (`--strict`)
 
-Example:
+## 11. Canonical IDs for Trace
 
-```powershell
-python -m semantic_test.cli.main exposure D:\Projects\semantic_test\vc_test1 D:\vc_test1 --json
-```
-
-Useful options:
-
-```powershell
-python -m semantic_test.cli.main exposure <before> <after> --json
-python -m semantic_test.cli.main exposure <before> <after> --strict
-python -m semantic_test.cli.main exposure <before> <after> --out D:\temp\exposure.json --json
-```
-
-### 7.4 `trace` - Upstream/downstream dependencies for one object
-
-Purpose:
-- Shows what an object depends on and what depends on it
-
-Run:
-
-```powershell
-python -m semantic_test.cli.main trace "<object_id>" <model_path>
-```
-
-Example:
-
-```powershell
-python -m semantic_test.cli.main trace "Measure:Metrics.Total CSR Chats" D:\Projects\semantic_test\vc_test1 --depth 5
-```
-
-Useful options:
-
-```powershell
-python -m semantic_test.cli.main trace "<object_id>" <model_path> --upstream
-python -m semantic_test.cli.main trace "<object_id>" <model_path> --downstream
-python -m semantic_test.cli.main trace "<object_id>" <model_path> --format json
-```
-
-Note:
-- If `trace` says no snapshot found, run `scan` first.
-
-## 8. Canonical Object ID Format (for `trace`)
-
-Use these exact formats:
 - Table: `Table:Sales`
 - Column: `Column:Sales.Amount`
 - Measure: `Measure:Sales.Total Sales`
 - Relationship: `Relationship:Sales.DateKey->Date.DateKey`
 
-## 9. Output Files You Will Get
+## 12. Quick Troubleshooting
 
-By default, output is written under the model root:
-
-- `<model_path>\.semantic-test\index.json`
-- `<model_path>\.semantic-test\runs\<RUN_ID>\manifest.json`
-- `<model_path>\.semantic-test\runs\<RUN_ID>\snapshot.json`
-- `<model_path>\.semantic-test\runs\<RUN_ID>\report.txt`
-- `<model_path>\.semantic-test\runs\<RUN_ID>\report.json`
-
-Use `report.txt` for human reading.
-Use `report.json` + exit code for automation.
-
-## 10. Exit Codes (Important for CI)
-
-- `0` = success
-- `1` = runtime error
-- `2` = strict policy failure (`--strict`)
-
-## 11. Beginner Workflow (Copy-Paste)
-
-Use this exact sequence:
-
-```powershell
-# 1) Scan current model
-python -m semantic_test.cli.main scan D:\Projects\semantic_test\vc_test1 --strict
-
-# 2) Compare with another folder
-python -m semantic_test.cli.main diff D:\Projects\semantic_test\vc_test1 D:\vc_test1 --format json
-
-# 3) See blast radius
-python -m semantic_test.cli.main exposure D:\Projects\semantic_test\vc_test1 D:\vc_test1 --json
-
-# 4) Trace one critical measure
-python -m semantic_test.cli.main trace "Measure:Metrics.Total CSR Chats" D:\Projects\semantic_test\vc_test1 --depth 5
-```
-
-## 12. Troubleshooting Quick Fixes
-
-### Error: `semantic-test` not recognized
+### `semantic-test` not recognized
 Use:
 
 ```powershell
 python -m semantic_test.cli.main --help
 ```
 
-### Error: `No module named semantic-test`
-Use underscore module path:
+### Multiple definition folders found
+Use a specific model path, not repo root.
 
-```powershell
-python -m semantic_test.cli.main --help
-```
-
-### Error: `Multiple definition folders found`
-You scanned too high-level a folder.
-Run with a specific model path:
-
-```powershell
-python -m semantic_test.cli.main scan D:\Projects\semantic_test\vc_test1
-```
-
-### `trace` shows no previous run
+### `trace` says no previous snapshot
 Run scan first:
 
 ```powershell
-python -m semantic_test.cli.main scan D:\Projects\semantic_test\vc_test1 --stdout none
-python -m semantic_test.cli.main trace "Measure:Metrics.Total CSR Chats" D:\Projects\semantic_test\vc_test1
+python -m semantic_test.cli.main scan "<model_path>" --stdout none
+python -m semantic_test.cli.main trace "<object_id>" "<model_path>"
 ```
 
-## 13. Current Limitations
+## 13. Architecture & Coverage Docs
 
-- No `semantic-test test <yaml>` command yet (Phase 2 not implemented).
-- Dependency extraction is structural and conservative; some uncommon DAX patterns may be partial.
-- Experimental coverage areas include calc groups/items and field parameters.
-- Tool does not validate business correctness of measures.
+- [Phase-1 Architecture](PHASE1_ARCHITECTURE.md)
+- [Coverage Matrix](coverage.md)
+- [Detailed DAX Coverage Registry](../COVERAGE.md)

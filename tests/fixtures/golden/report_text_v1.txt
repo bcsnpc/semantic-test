@@ -2,8 +2,8 @@ semantic-test Exposure Report
 Tool Version: 0.1.0
 Model Key: semanticmodel::fixtures/report_model/definition
 Run ID: 20260302_214533_exposure_fixture_1234abcd
-Old Snapshot Hash: 7a90d1afa1ea2ffb4a4f91e9dbc72b858f43517221db10cb7e55c02d58ae81dc
-New Snapshot Hash: bb3dff3b3009541467738ee2a8b817181805abe6084820bc5f76e8181aec7cee
+Old Snapshot Hash: aedd4cdb6a674a02028a146c4ea3c6ffd5e784a11ff4f61a52f3450cb69afb4a
+New Snapshot Hash: e83e4153583193821f9df989bf185d456f108a9e0f5c9647032b94ad375483e1
 
 Detected Changes
   Total: 2
@@ -32,24 +32,24 @@ Coverage Summary
 
 Coverage Details
 Coverage Summary
-  ✅ Supported: 2
-  ⚠️ Partial: 5
-  ❌ Unsupported: 0
+  [OK] Supported: 2
+  [WARN] Partial: 5
+  [MISS] Unsupported: 0
 Coverage Matrix
-  ✅ [parser] Locate PBIP/TMDL files - Path discovery flow planned in pbip_locator.
-  ✅ [extractor.tables] Table object extraction - Canonical table IDs are defined.
-  ⚠️ [extractor.columns] Column extraction - ID model exists; parser wiring pending.
-  ⚠️ [extractor.measures] Measure extraction - ID model supports table/no-table forms.
-  ⚠️ [extractor.relationships] Relationship extraction - Relationship objects extracted; graph edge wiring pending.
-  ⚠️ [extractor.calc_groups] Calculation groups and items - Experimental coverage: node presence + expression dependencies.
-  ⚠️ [extractor.field_params] Field parameter tables - Experimental coverage: special table detection + dependencies.
+  [OK] [parser] Locate PBIP/TMDL files - Finds definition folders from repo root, .SemanticModel, or definition path.
+  [OK] [extractor.tables] Table object extraction - Canonical table IDs are defined.
+  [WARN] [extractor.columns] Column extraction - Creates column nodes and parses calculated-column expressions for dependencies.
+  [WARN] [extractor.measures] Measure extraction - Creates measure nodes and resolves common DAX dependency reference patterns.
+  [WARN] [extractor.relationships] Relationship extraction - Extracts relationship properties and IDs; relationship edge enrichment is limited.
+  [WARN] [extractor.calc_groups] Calculation groups and items - Experimental: creates calc group/item nodes and parses calc-item expression dependencies.
+  [WARN] [extractor.field_params] Field parameter tables - Experimental: detects field parameter tables and parses partition-source dependencies.
 
 Known Gaps
-- [partial] extractor.calc_groups | Calculation groups and items | Experimental coverage: node presence + expression dependencies.
-- [partial] extractor.columns | Column extraction | ID model exists; parser wiring pending.
-- [partial] extractor.field_params | Field parameter tables | Experimental coverage: special table detection + dependencies.
-- [partial] extractor.measures | Measure extraction | ID model supports table/no-table forms.
-- [partial] extractor.relationships | Relationship extraction | Relationship objects extracted; graph edge wiring pending.
+- [partial] extractor.calc_groups | Calculation groups and items | Experimental: creates calc group/item nodes and parses calc-item expression dependencies.
+- [partial] extractor.columns | Column extraction | Creates column nodes and parses calculated-column expressions for dependencies.
+- [partial] extractor.field_params | Field parameter tables | Experimental: detects field parameter tables and parses partition-source dependencies.
+- [partial] extractor.measures | Measure extraction | Creates measure nodes and resolves common DAX dependency reference patterns.
+- [partial] extractor.relationships | Relationship extraction | Extracts relationship properties and IDs; relationship edge enrichment is limited.
 
 Unknown Patterns
 - none

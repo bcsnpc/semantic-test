@@ -115,6 +115,52 @@ class ExtractorInventoryTests(unittest.TestCase):
         self.assertIn("Column:Other.Date", label["dependencies"])
         self.assertEqual(label["unknown_patterns"], [])
 
+    def test_calc_column_unqualified_ref_can_resolve_measure(self) -> None:
+        docs = [
+            (
+                "tables/T.tmdl",
+                "\n".join(
+                    [
+                        "table T",
+                        "\tcolumn col",
+                        "\tmeasure Some Measure = SUM(T[col])",
+                        "\tcolumn Ratio = DIVIDE(SUM(T[col]), [Some Measure])",
+                    ]
+                ),
+                "dummy",
+            )
+        ]
+        parsed = parse_tmdl_documents(docs)
+
+        column_inventory = extract_columns(parsed)
+        ratio = column_inventory["Column:T.Ratio"]
+
+        self.assertIn("Measure:T.Some Measure", ratio["dependencies"])
+        self.assertEqual(ratio["unknown_patterns"], [])
+
+    def test_calc_column_missing_ref_reason_mentions_column_and_measure_not_found(self) -> None:
+        docs = [
+            (
+                "tables/T.tmdl",
+                "\n".join(
+                    [
+                        "table T",
+                        '\tcolumn Label = FORMAT([NotThere], "MMM")',
+                    ]
+                ),
+                "dummy",
+            )
+        ]
+        parsed = parse_tmdl_documents(docs)
+
+        column_inventory = extract_columns(parsed)
+        label = column_inventory["Column:T.Label"]
+        issue = label["unresolved_references"][0]
+
+        self.assertIn("column", issue["reason"].lower())
+        self.assertIn("measure", issue["reason"].lower())
+        self.assertIn("did_you_mean", issue)
+
     def test_extracts_single_relationship_with_canonical_id(self) -> None:
         docs = [
             (

@@ -31,35 +31,35 @@
       {
         "area": "extractor.calc_groups",
         "icon": "\u26a0\ufe0f",
-        "notes": "Experimental coverage: node presence + expression dependencies.",
+        "notes": "Experimental: creates calc group/item nodes and parses calc-item expression dependencies.",
         "pattern": "Calculation groups and items",
         "status": "partial"
       },
       {
         "area": "extractor.columns",
         "icon": "\u26a0\ufe0f",
-        "notes": "ID model exists; parser wiring pending.",
+        "notes": "Creates column nodes and parses calculated-column expressions for dependencies.",
         "pattern": "Column extraction",
         "status": "partial"
       },
       {
         "area": "extractor.field_params",
         "icon": "\u26a0\ufe0f",
-        "notes": "Experimental coverage: special table detection + dependencies.",
+        "notes": "Experimental: detects field parameter tables and parses partition-source dependencies.",
         "pattern": "Field parameter tables",
         "status": "partial"
       },
       {
         "area": "extractor.measures",
         "icon": "\u26a0\ufe0f",
-        "notes": "ID model supports table/no-table forms.",
+        "notes": "Creates measure nodes and resolves common DAX dependency reference patterns.",
         "pattern": "Measure extraction",
         "status": "partial"
       },
       {
         "area": "extractor.relationships",
         "icon": "\u26a0\ufe0f",
-        "notes": "Relationship objects extracted; graph edge wiring pending.",
+        "notes": "Extracts relationship properties and IDs; relationship edge enrichment is limited.",
         "pattern": "Relationship extraction",
         "status": "partial"
       },
@@ -73,7 +73,7 @@
       {
         "area": "parser",
         "icon": "\u2705",
-        "notes": "Path discovery flow planned in pbip_locator.",
+        "notes": "Finds definition folders from repo root, .SemanticModel, or definition path.",
         "pattern": "Locate PBIP/TMDL files",
         "status": "supported"
       }
@@ -132,31 +132,31 @@
     "known_gaps": [
       {
         "area": "extractor.calc_groups",
-        "notes": "Experimental coverage: node presence + expression dependencies.",
+        "notes": "Experimental: creates calc group/item nodes and parses calc-item expression dependencies.",
         "pattern": "Calculation groups and items",
         "status": "partial"
       },
       {
         "area": "extractor.columns",
-        "notes": "ID model exists; parser wiring pending.",
+        "notes": "Creates column nodes and parses calculated-column expressions for dependencies.",
         "pattern": "Column extraction",
         "status": "partial"
       },
       {
         "area": "extractor.field_params",
-        "notes": "Experimental coverage: special table detection + dependencies.",
+        "notes": "Experimental: detects field parameter tables and parses partition-source dependencies.",
         "pattern": "Field parameter tables",
         "status": "partial"
       },
       {
         "area": "extractor.measures",
-        "notes": "ID model supports table/no-table forms.",
+        "notes": "Creates measure nodes and resolves common DAX dependency reference patterns.",
         "pattern": "Measure extraction",
         "status": "partial"
       },
       {
         "area": "extractor.relationships",
-        "notes": "Relationship objects extracted; graph edge wiring pending.",
+        "notes": "Extracts relationship properties and IDs; relationship edge enrichment is limited.",
         "pattern": "Relationship extraction",
         "status": "partial"
       }

@@ -16,35 +16,35 @@
       {
         "area": "extractor.calc_groups",
         "icon": "\u26a0\ufe0f",
-        "notes": "Experimental coverage: node presence + expression dependencies.",
+        "notes": "Experimental: creates calc group/item nodes and parses calc-item expression dependencies.",
         "pattern": "Calculation groups and items",
         "status": "partial"
       },
       {
         "area": "extractor.columns",
         "icon": "\u26a0\ufe0f",
-        "notes": "ID model exists; parser wiring pending.",
+        "notes": "Creates column nodes and parses calculated-column expressions for dependencies.",
         "pattern": "Column extraction",
         "status": "partial"
       },
       {
         "area": "extractor.field_params",
         "icon": "\u26a0\ufe0f",
-        "notes": "Experimental coverage: special table detection + dependencies.",
+        "notes": "Experimental: detects field parameter tables and parses partition-source dependencies.",
         "pattern": "Field parameter tables",
         "status": "partial"
       },
       {
         "area": "extractor.measures",
         "icon": "\u26a0\ufe0f",
-        "notes": "ID model supports table/no-table forms.",
+        "notes": "Creates measure nodes and resolves common DAX dependency reference patterns.",
         "pattern": "Measure extraction",
         "status": "partial"
       },
       {
         "area": "extractor.relationships",
         "icon": "\u26a0\ufe0f",
-        "notes": "Relationship objects extracted; graph edge wiring pending.",
+        "notes": "Extracts relationship properties and IDs; relationship edge enrichment is limited.",
         "pattern": "Relationship extraction",
         "status": "partial"
       },
@@ -58,7 +58,7 @@
       {
         "area": "parser",
         "icon": "\u2705",
-        "notes": "Path discovery flow planned in pbip_locator.",
+        "notes": "Finds definition folders from repo root, .SemanticModel, or definition path.",
         "pattern": "Locate PBIP/TMDL files",
         "status": "supported"
       }
@@ -112,31 +112,31 @@
     "known_gaps": [
       {
         "area": "extractor.calc_groups",
-        "notes": "Experimental coverage: node presence + expression dependencies.",
+        "notes": "Experimental: creates calc group/item nodes and parses calc-item expression dependencies.",
         "pattern": "Calculation groups and items",
         "status": "partial"
       },
       {
         "area": "extractor.columns",
-        "notes": "ID model exists; parser wiring pending.",
+        "notes": "Creates column nodes and parses calculated-column expressions for dependencies.",
         "pattern": "Column extraction",
         "status": "partial"
       },
       {
         "area": "extractor.field_params",
-        "notes": "Experimental coverage: special table detection + dependencies.",
+        "notes": "Experimental: detects field parameter tables and parses partition-source dependencies.",
         "pattern": "Field parameter tables",
         "status": "partial"
       },
       {
         "area": "extractor.measures",
-        "notes": "ID model supports table/no-table forms.",
+        "notes": "Creates measure nodes and resolves common DAX dependency reference patterns.",
         "pattern": "Measure extraction",
         "status": "partial"
       },
       {
         "area": "extractor.relationships",
-        "notes": "Relationship objects extracted; graph edge wiring pending.",
+        "notes": "Extracts relationship properties and IDs; relationship edge enrichment is limited.",
         "pattern": "Relationship extraction",
         "status": "partial"
       }
@@ -145,8 +145,8 @@
     "unresolved_refs": []
   },
   "model_key": "semanticmodel::fixtures/report_model/definition",
-  "new_snapshot_hash": "bb3dff3b3009541467738ee2a8b817181805abe6084820bc5f76e8181aec7cee",
-  "old_snapshot_hash": "7a90d1afa1ea2ffb4a4f91e9dbc72b858f43517221db10cb7e55c02d58ae81dc",
+  "new_snapshot_hash": "e83e4153583193821f9df989bf185d456f108a9e0f5c9647032b94ad375483e1",
+  "old_snapshot_hash": "aedd4cdb6a674a02028a146c4ea3c6ffd5e784a11ff4f61a52f3450cb69afb4a",
   "run_id": "20260302_214533_exposure_fixture_1234abcd",
   "schema_version": 1,
   "tool_version": "0.1.0"

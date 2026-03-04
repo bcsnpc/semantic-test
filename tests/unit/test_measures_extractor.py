@@ -134,6 +134,99 @@ class MeasureExtractorTests(unittest.TestCase):
         # [Base] should still be resolved as a dependency
         self.assertIn("Measure:Metrics.Base", growth["dependencies"])
 
+    def test_missing_measure_includes_did_you_mean_suggestions(self) -> None:
+        docs = [
+            (
+                "tables/Metrics.tmdl",
+                "\n".join(
+                    [
+                        "table Metrics",
+                        "\tmeasure Some Measure = 1",
+                        "\tmeasure Another Metric = 2",
+                        "\tmeasure KPI = [Som Measure]",
+                    ]
+                ),
+                "dummy",
+            )
+        ]
+        parsed = parse_tmdl_documents(docs)
+        inventory = extract_measures(parsed)
+        kpi = inventory["Measure:Metrics.KPI"]
+
+        unresolved = kpi["unresolved_references"][0]
+        self.assertIn("did_you_mean", unresolved)
+        self.assertTrue(unresolved["did_you_mean"])
+        self.assertTrue(any(item.endswith("Some Measure") for item in unresolved["did_you_mean"]))
+
+    def test_best_guess_threshold_applied_for_close_match(self) -> None:
+        docs = [
+            (
+                "tables/Metrics.tmdl",
+                "\n".join(
+                    [
+                        "table Metrics",
+                        "\tmeasure Feedback Rating Measure1 = 1",
+                        "\tmeasure KPI = [Feedback Rating Measure]",
+                    ]
+                ),
+                "dummy",
+            )
+        ]
+        parsed = parse_tmdl_documents(docs)
+        inventory = extract_measures(parsed)
+        issue = inventory["Measure:Metrics.KPI"]["unresolved_references"][0]
+
+        self.assertIsNotNone(issue["best_guess"])
+        self.assertGreaterEqual(int(issue["best_guess_score"]), 85)
+        self.assertEqual(issue["action"], "RENAME_REFERENCE")
+        self.assertIsInstance(issue.get("why_best_guess"), str)
+        self.assertTrue(issue.get("why_best_guess"))
+
+    def test_best_guess_null_when_score_below_threshold(self) -> None:
+        docs = [
+            (
+                "tables/Metrics.tmdl",
+                "\n".join(
+                    [
+                        "table Metrics",
+                        "\tmeasure Revenue = 1",
+                        "\tmeasure KPI = [ZZZZUnknownThing]",
+                    ]
+                ),
+                "dummy",
+            )
+        ]
+        parsed = parse_tmdl_documents(docs)
+        inventory = extract_measures(parsed)
+        issue = inventory["Measure:Metrics.KPI"]["unresolved_references"][0]
+
+        self.assertIsNone(issue["best_guess"])
+        self.assertIsNone(issue["best_guess_score"])
+        self.assertIn(issue["action"], {"ADD_MISSING_OBJECT", "MANUAL_REVIEW"})
+
+    def test_top3_ranked_candidates_follow_expected_type(self) -> None:
+        docs = [
+            (
+                "tables/Metrics.tmdl",
+                "\n".join(
+                    [
+                        "table Metrics",
+                        "\tcolumn Feedback Rating Measure",
+                        "\tmeasure Feedback Rating Measure1 = 1",
+                        "\tmeasure KPI = [Feedback Rating Measure]",
+                    ]
+                ),
+                "dummy",
+            )
+        ]
+        parsed = parse_tmdl_documents(docs)
+        inventory = extract_measures(parsed)
+        issue = inventory["Measure:Metrics.KPI"]["unresolved_references"][0]
+
+        top3 = issue.get("did_you_mean_top3_ranked", [])
+        self.assertTrue(top3)
+        self.assertTrue(all(str(item.get("candidate", "")).startswith("measure:") for item in top3))
+
 
 if __name__ == "__main__":
     unittest.main()

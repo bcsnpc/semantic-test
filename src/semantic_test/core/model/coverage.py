@@ -52,7 +52,7 @@ def default_coverage_matrix() -> CoverageMatrix:
                 area="parser",
                 pattern="Locate PBIP/TMDL files",
                 status=CoverageStatus.SUPPORTED,
-                notes="Path discovery flow planned in pbip_locator.",
+                notes="Finds definition folders from repo root, .SemanticModel, or definition path.",
             ),
             CoverageItem(
                 area="extractor.tables",
@@ -64,31 +64,31 @@ def default_coverage_matrix() -> CoverageMatrix:
                 area="extractor.columns",
                 pattern="Column extraction",
                 status=CoverageStatus.PARTIAL,
-                notes="ID model exists; parser wiring pending.",
+                notes="Creates column nodes and parses calculated-column expressions for dependencies.",
             ),
             CoverageItem(
                 area="extractor.measures",
                 pattern="Measure extraction",
                 status=CoverageStatus.PARTIAL,
-                notes="ID model supports table/no-table forms.",
+                notes="Creates measure nodes and resolves common DAX dependency reference patterns.",
             ),
             CoverageItem(
                 area="extractor.relationships",
                 pattern="Relationship extraction",
                 status=CoverageStatus.PARTIAL,
-                notes="Relationship objects extracted; graph edge wiring pending.",
+                notes="Extracts relationship properties and IDs; relationship edge enrichment is limited.",
             ),
             CoverageItem(
                 area="extractor.calc_groups",
                 pattern="Calculation groups and items",
                 status=CoverageStatus.PARTIAL,
-                notes="Experimental coverage: node presence + expression dependencies.",
+                notes="Experimental: creates calc group/item nodes and parses calc-item expression dependencies.",
             ),
             CoverageItem(
                 area="extractor.field_params",
                 pattern="Field parameter tables",
                 status=CoverageStatus.PARTIAL,
-                notes="Experimental coverage: special table detection + dependencies.",
+                notes="Experimental: detects field parameter tables and parses partition-source dependencies.",
             ),
         ]
     )

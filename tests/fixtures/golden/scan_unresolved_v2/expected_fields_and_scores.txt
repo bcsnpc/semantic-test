@@ -1,0 +1,5 @@
+expected_type: measure | expected_scope: any_table | likely_cause: renamed_object
+action: RENAME_REFERENCE
+why_best_guess: Exact match after normalization + same type (measure).
+referrers_count: 1
+did_you_mean_top3: ['(<SCORE>) measure:Feedback Rating Measure1', '(<SCORE>) measure:KPI']

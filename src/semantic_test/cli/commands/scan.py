@@ -6,6 +6,9 @@ from dataclasses import asdict
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+import re
+import shutil
+import sys
 from typing import Any
 
 import typer
@@ -47,6 +50,7 @@ def scan_command(
         raise typer.BadParameter("--stdout must be one of: text, json, none")
 
     now = datetime.now(timezone.utc)
+    invocation_prefix = _invocation_prefix()
     project_root = resolve_project_root(input_path)
     output_root = get_output_root(project_root, outdir_override=outdir)
     run_folder = create_run_folder(
@@ -106,7 +110,7 @@ def scan_command(
             "error": message,
         }
         report_json = json.dumps(report_json_obj, indent=2, sort_keys=True)
-        report_text = _error_report_text(message, discovery=discovery)
+        report_text = _error_report_text(message, discovery=discovery, invocation_prefix=invocation_prefix)
         write_text(run_folder, "snapshot.json", json.dumps({"status": "ERROR", "error": message}, indent=2, sort_keys=True))
         write_text(run_folder, "report.txt", report_text)
         write_text(run_folder, "report.json", report_json)
@@ -205,6 +209,8 @@ def scan_command(
         selected_model_definition_path=artifacts.selected_model_definition_path,
         models_detected_count=artifacts.models_detected_count,
         resolution_assumption_traces=resolution_assumption_traces,
+        invocation_prefix=invocation_prefix,
+        semantic_cli_available=_semantic_cli_available(),
     )
     report_json = json.dumps(report_json_obj, indent=2, sort_keys=True)
     snapshot_json = json.dumps(asdict(artifacts.snapshot), indent=2, sort_keys=True)
@@ -269,6 +275,8 @@ def _render_text(
     selected_model_definition_path: str,
     models_detected_count: int,
     resolution_assumption_traces: list[str],
+    invocation_prefix: str,
+    semantic_cli_available: bool,
 ) -> str:
     lines: list[str] = [
         f"semantic-test Scan Report (v{__version__})",
@@ -314,6 +322,7 @@ def _render_text(
                 groups=unresolved_groups,
                 item_label="missing",
                 show_all=(show_all or debug),
+                debug=debug,
             )
         )
         lines.extend(
@@ -322,6 +331,7 @@ def _render_text(
                 groups=unsupported_groups,
                 item_label="unsupported",
                 show_all=(show_all or debug),
+                debug=debug,
             )
         )
 
@@ -334,15 +344,34 @@ def _render_text(
 
     strict_target = selected_model_definition_path
     debug_target = selected_model_definition_path
+    strict_cmd = _scan_command(invocation_prefix, strict_target, "--strict")
+    debug_cmd = _scan_command(invocation_prefix, debug_target, "--debug")
 
     lines.extend(["", "Next Actions", "------------"])
     if status == "STRUCTURAL_ISSUES":
-        lines.append(f"- Re-run this specific model: semantic-test scan {strict_target} --strict")
+        lines.append(f"- Re-run this specific model: {strict_cmd}")
         if models_detected_count == 1 and scan_input_path != selected_model_definition_path:
-            lines.append(f"- Re-run using your original input path: semantic-test scan {scan_input_path} --strict")
-        lines.append(f"- For parser/coverage diagnostics: semantic-test scan {debug_target} --debug")
+            lines.append(
+                f"- Re-run using your original input path: "
+                f"{_scan_command(invocation_prefix, scan_input_path, '--strict')}"
+            )
+        lines.append(f"- For parser/coverage diagnostics: {debug_cmd}")
+        if invocation_prefix != "semantic-test":
+            lines.append(
+                f"- If CLI entrypoint is installed: "
+                f"{_scan_command('semantic-test', strict_target, '--strict')}"
+            )
+        if not semantic_cli_available:
+            lines.append("- Install CLI entrypoint (dev): pip install -e .")
     else:
-        lines.append(f"- Model is structurally clean. Gate CI with: semantic-test scan {strict_target} --strict")
+        lines.append(f"- Model is structurally clean. Gate CI with: {strict_cmd}")
+        if invocation_prefix != "semantic-test":
+            lines.append(
+                f"- If CLI entrypoint is installed: "
+                f"{_scan_command('semantic-test', strict_target, '--strict')}"
+            )
+        if not semantic_cli_available:
+            lines.append("- Install CLI entrypoint (dev): pip install -e .")
 
     if debug:
         lines.extend(["", "Details", "-------", "Coverage Matrix"])
@@ -358,6 +387,7 @@ def _render_text(
                 groups=unresolved_groups,
                 item_label="missing",
                 show_all=True,
+                debug=True,
             )
         )
         lines.extend(
@@ -366,6 +396,7 @@ def _render_text(
                 groups=unsupported_groups,
                 item_label="unsupported",
                 show_all=True,
+                debug=True,
             )
         )
 
@@ -378,6 +409,7 @@ def _render_issue_section(
     groups: list[dict[str, Any]],
     item_label: str,
     show_all: bool,
+    debug: bool,
 ) -> list[str]:
     lines: list[str] = [title]
     if not groups:
@@ -388,6 +420,11 @@ def _render_issue_section(
     displayed = groups[:limit]
     for group in displayed:
         lines.append(f"{group['source_object_name']} ({group['source_object_type']})")
+        if debug:
+            lines.append(f"  object_id: {group.get('source_object_id', 'unknown')}")
+            source_file = group.get("source_file_path")
+            if source_file:
+                lines.append(f"  source_file: {source_file}")
         snippet = group.get("expression_snippet")
         if snippet:
             lines.append(f"  expression: {snippet}")
@@ -398,6 +435,42 @@ def _render_issue_section(
                 f"reason: {item.get('reason', 'n/a')} | "
                 f"severity: {item.get('severity', 'ERROR')}"
             )
+            lines.append(
+                "    "
+                f"expected_type: {item.get('expected_type', 'unknown')} | "
+                f"expected_scope: {item.get('expected_scope', 'unknown')} | "
+                f"likely_cause: {item.get('likely_cause', 'unknown')}"
+            )
+            lines.append(f"    action: {item.get('action', 'MANUAL_REVIEW')}")
+            if item.get("best_guess") is not None:
+                lines.append(
+                    "    "
+                    f"best_guess: {item.get('best_guess')} "
+                    f"(score: {item.get('best_guess_score')})"
+                )
+                if item.get("why_best_guess"):
+                    lines.append(f"    why_best_guess: {item.get('why_best_guess')}")
+            lines.append(f"    referrers_count: {item.get('referrers_count', 0)}")
+            suggestions = item.get("did_you_mean")
+            if isinstance(suggestions, list) and suggestions:
+                lines.append(f"    did_you_mean: {suggestions}")
+            ranked = item.get("did_you_mean_top3_ranked") or item.get("did_you_mean_ranked")
+            if isinstance(ranked, list) and ranked:
+                top_ranked = []
+                for candidate in ranked[:3]:
+                    if not isinstance(candidate, dict):
+                        continue
+                    top_ranked.append(
+                        f"({candidate.get('score', 0)}) {candidate.get('candidate', '')}"
+                    )
+                if top_ranked:
+                    lines.append(f"    did_you_mean_top3: {top_ranked}")
+        for idx, option in enumerate(group.get("suggested_fix_options", []), start=1):
+            expr = str(option.get("expression", "")).strip()
+            if not expr:
+                continue
+            score = int(option.get("combined_score", 0))
+            lines.append(f"  Suggested fix (option {idx}, score {score}): {expr}")
     remaining = len(groups) - len(displayed)
     if remaining > 0:
         lines.append(f"(+{remaining} more; re-run with --show-all)")
@@ -408,6 +481,7 @@ def _build_unresolved_issue_groups(
     *,
     objects: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    referrers_count_map = _build_referrers_count_map(objects)
     output: list[dict[str, Any]] = []
     for source in sorted(objects.keys()):
         metadata = objects[source]
@@ -426,6 +500,19 @@ def _build_unresolved_issue_groups(
                         "target": target,
                         "reason": str(raw.get("reason", "Missing reference")),
                         "severity": str(raw.get("severity", "ERROR")),
+                        "did_you_mean": list(raw.get("did_you_mean", []))
+                        if isinstance(raw.get("did_you_mean"), list)
+                        else [],
+                        "did_you_mean_ranked": list(raw.get("did_you_mean_ranked", []))
+                        if isinstance(raw.get("did_you_mean_ranked"), list)
+                        else [],
+                        "expected_type": str(raw.get("expected_type", "unknown")),
+                        "expected_scope": str(raw.get("expected_scope", "unknown")),
+                        "likely_cause": str(raw.get("likely_cause", "unknown")),
+                        "best_guess": raw.get("best_guess"),
+                        "best_guess_score": raw.get("best_guess_score"),
+                        "why_best_guess": raw.get("why_best_guess"),
+                        "action": str(raw.get("action", "MANUAL_REVIEW")),
                     }
                 )
 
@@ -441,6 +528,15 @@ def _build_unresolved_issue_groups(
                                 "target": text.split(":", maxsplit=1)[1],
                                 "reason": "Reference could not be resolved.",
                                 "severity": "ERROR",
+                                "did_you_mean": [],
+                                "did_you_mean_ranked": [],
+                                "expected_type": "unknown",
+                                "expected_scope": "unknown",
+                                "likely_cause": "unknown",
+                                "best_guess": None,
+                                "best_guess_score": None,
+                                "why_best_guess": None,
+                                "action": "MANUAL_REVIEW",
                             }
                         )
                     if text.startswith("ambiguous_column:"):
@@ -450,6 +546,15 @@ def _build_unresolved_issue_groups(
                                 "target": text.split(":", maxsplit=1)[1],
                                 "reason": "Ambiguous reference resolved to multiple candidate columns.",
                                 "severity": "ERROR",
+                                "did_you_mean": [],
+                                "did_you_mean_ranked": [],
+                                "expected_type": "column",
+                                "expected_scope": "any_table",
+                                "likely_cause": "unknown",
+                                "best_guess": None,
+                                "best_guess_score": None,
+                                "why_best_guess": None,
+                                "action": "MANUAL_REVIEW",
                             }
                         )
 
@@ -462,7 +567,33 @@ def _build_unresolved_issue_groups(
                 "source_object_name": _display_object_id(source),
                 "source_object_type": _object_kind(metadata),
                 "expression_snippet": _expression_snippet(metadata),
-                "items": sorted(items, key=lambda item: item["target"]),
+                "source_file_path": str(metadata.get("source_file", "")) or None,
+                "items": sorted(
+                    [
+                        {
+                            **item,
+                            "referrers_count": referrers_count_map.get(
+                                _normalize_ref_target(str(item.get("target", ""))),
+                                0,
+                            ),
+                        }
+                        for item in items
+                    ],
+                    key=lambda item: item["target"],
+                ),
+                "suggested_fix_options": _suggested_fix_options(
+                    expression=_expression_text(metadata),
+                    items=[
+                        {
+                            **item,
+                            "referrers_count": referrers_count_map.get(
+                                _normalize_ref_target(str(item.get("target", ""))),
+                                0,
+                            ),
+                        }
+                        for item in items
+                    ],
+                ),
             }
         )
     return output
@@ -505,6 +636,7 @@ def _build_unsupported_issue_groups(
                 "source_object_name": _display_object_id(source),
                 "source_object_type": _object_kind(metadata),
                 "expression_snippet": _expression_snippet(metadata),
+                "source_file_path": str(metadata.get("source_file", "")) or None,
                 "items": items,
             }
         )
@@ -572,6 +704,114 @@ def _ambiguous_reference_count(
     return inferred
 
 
+def _suggested_fix_options(
+    *,
+    expression: str,
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not expression:
+        return []
+    if len(items) < 2:
+        return []
+
+    ranked_by_ref: dict[str, list[dict[str, Any]]] = {}
+    best_guess_count = 0
+    for item in items:
+        ref = str(item.get("target", "")).strip()
+        ranked = item.get("did_you_mean_ranked", [])
+        if not ref or not isinstance(ranked, list):
+            continue
+        normalized_ranked = [entry for entry in ranked if isinstance(entry, dict) and entry.get("candidate")]
+        if not normalized_ranked:
+            continue
+        ranked_by_ref[ref] = normalized_ranked
+        if item.get("best_guess"):
+            best_guess_count += 1
+
+    if best_guess_count == 0:
+        return []
+
+    # Build option seeds: base top-1, plus up to two perturbations from next-ranked candidates.
+    option_maps: list[dict[str, dict[str, Any]]] = []
+    base_map: dict[str, dict[str, Any]] = {}
+    for ref, ranked in ranked_by_ref.items():
+        base_map[ref] = ranked[0]
+    option_maps.append(base_map)
+
+    alternates: list[tuple[int, str, dict[str, Any]]] = []
+    for ref, ranked in ranked_by_ref.items():
+        for alt in ranked[1:3]:
+            alternates.append((int(alt.get("score", 0)), ref, alt))
+    alternates.sort(key=lambda row: -row[0])
+    for _, ref, alt in alternates[:2]:
+        candidate_map = dict(base_map)
+        candidate_map[ref] = alt
+        option_maps.append(candidate_map)
+
+    options: list[dict[str, Any]] = []
+    seen_expr: set[str] = set()
+    for candidate_map in option_maps:
+        rewritten = expression
+        scores: list[int] = []
+        for ref, choice in candidate_map.items():
+            replacement = _replacement_from_candidate(str(choice.get("candidate", "")))
+            if not replacement:
+                continue
+            rewritten = rewritten.replace(ref, replacement)
+            scores.append(int(choice.get("score", 0)))
+        if not scores:
+            continue
+        if rewritten in seen_expr:
+            continue
+        seen_expr.add(rewritten)
+        options.append(
+            {
+                "expression": rewritten,
+                "combined_score": int(round(sum(scores) / len(scores))),
+            }
+        )
+
+    options.sort(key=lambda row: -int(row.get("combined_score", 0)))
+    return options[:3]
+
+
+def _replacement_from_candidate(candidate: str) -> str | None:
+    text = candidate.strip()
+    if text.startswith("measure:"):
+        name = text.split(":", maxsplit=1)[1].strip()
+        return f"[{name}]" if name else None
+    if text.startswith("column:"):
+        body = text.split(":", maxsplit=1)[1].strip()
+        if "[" in body and body.endswith("]"):
+            table_name, col_part = body.split("[", maxsplit=1)
+            column_name = col_part[:-1]
+            table = table_name.strip().strip("'")
+            if not table or not column_name:
+                return None
+            return f"'{table}'[{column_name}]"
+    return None
+
+
+def _build_referrers_count_map(objects: dict[str, dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for metadata in objects.values():
+        expression = _expression_text(metadata)
+        if not expression:
+            continue
+        refs = {match.strip() for match in re.findall(r"\[([^\[\]]+)\]", expression)}
+        for ref in refs:
+            key = ref.lower()
+            counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _normalize_ref_target(target: str) -> str:
+    text = target.strip()
+    if text.startswith("[") and text.endswith("]"):
+        text = text[1:-1]
+    return text.lower().strip()
+
+
 def _discover_models(input_path: str) -> dict[str, Any]:
     try:
         project_root = resolve_project_root(input_path)
@@ -631,7 +871,11 @@ def _display_object_id(object_id: str) -> str:
     return object_id
 
 
-def _error_report_text(message: str, discovery: dict[str, Any] | None = None) -> str:
+def _error_report_text(
+    message: str,
+    discovery: dict[str, Any] | None = None,
+    invocation_prefix: str = "semantic-test",
+) -> str:
     lines = [
         f"semantic-test Scan Report (v{__version__})",
         "Status: ERROR",
@@ -641,10 +885,15 @@ def _error_report_text(message: str, discovery: dict[str, Any] | None = None) ->
     if isinstance(models, list) and len(models) > 1:
         lines.extend(["", "Next Actions", "------------"])
         first = models[0]
+        path = str(first.get("definition_path", "<definition_path>"))
         lines.append(
             "Multiple models were detected. Re-run a specific model, for example: "
-            f"semantic-test scan {first.get('definition_path', '<definition_path>')} --strict"
+            f"{_scan_command(invocation_prefix, path, '--strict')}"
         )
+        if invocation_prefix != "semantic-test":
+            lines.append(
+                f"If CLI entrypoint is installed: {_scan_command('semantic-test', path, '--strict')}"
+            )
     return "\n".join(lines)
 
 
@@ -672,3 +921,23 @@ def _display_path(path: Path, base: Path) -> str:
         return relative.as_posix()
     except ValueError:
         return str(path.resolve())
+
+
+def _invocation_prefix() -> str:
+    argv0 = Path(sys.argv[0]).name.lower()
+    if argv0.startswith("semantic-test"):
+        return "semantic-test"
+    return "python -m semantic_test.cli.main"
+
+
+def _semantic_cli_available() -> bool:
+    return shutil.which("semantic-test") is not None
+
+
+def _scan_command(prefix: str, target_path: str, flag: str) -> str:
+    return f"{prefix} scan {_quote_arg(target_path)} {flag}"
+
+
+def _quote_arg(value: str) -> str:
+    escaped = str(value).replace('"', '\\"')
+    return f"\"{escaped}\""

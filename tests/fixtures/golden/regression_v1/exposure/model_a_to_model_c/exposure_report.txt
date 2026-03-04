@@ -29,20 +29,20 @@ Coverage Summary
   ⚠️ Partial: 5
   ❌ Unsupported: 0
 Coverage Matrix
-  ✅ [parser] Locate PBIP/TMDL files - Path discovery flow planned in pbip_locator.
+  ✅ [parser] Locate PBIP/TMDL files - Finds definition folders from repo root, .SemanticModel, or definition path.
   ✅ [extractor.tables] Table object extraction - Canonical table IDs are defined.
-  ⚠️ [extractor.columns] Column extraction - ID model exists; parser wiring pending.
-  ⚠️ [extractor.measures] Measure extraction - ID model supports table/no-table forms.
-  ⚠️ [extractor.relationships] Relationship extraction - Relationship objects extracted; graph edge wiring pending.
-  ⚠️ [extractor.calc_groups] Calculation groups and items - Experimental coverage: node presence + expression dependencies.
-  ⚠️ [extractor.field_params] Field parameter tables - Experimental coverage: special table detection + dependencies.
+  ⚠️ [extractor.columns] Column extraction - Creates column nodes and parses calculated-column expressions for dependencies.
+  ⚠️ [extractor.measures] Measure extraction - Creates measure nodes and resolves common DAX dependency reference patterns.
+  ⚠️ [extractor.relationships] Relationship extraction - Extracts relationship properties and IDs; relationship edge enrichment is limited.
+  ⚠️ [extractor.calc_groups] Calculation groups and items - Experimental: creates calc group/item nodes and parses calc-item expression dependencies.
+  ⚠️ [extractor.field_params] Field parameter tables - Experimental: detects field parameter tables and parses partition-source dependencies.
 
 Known Gaps
-- [partial] extractor.calc_groups | Calculation groups and items | Experimental coverage: node presence + expression dependencies.
-- [partial] extractor.columns | Column extraction | ID model exists; parser wiring pending.
-- [partial] extractor.field_params | Field parameter tables | Experimental coverage: special table detection + dependencies.
-- [partial] extractor.measures | Measure extraction | ID model supports table/no-table forms.
-- [partial] extractor.relationships | Relationship extraction | Relationship objects extracted; graph edge wiring pending.
+- [partial] extractor.calc_groups | Calculation groups and items | Experimental: creates calc group/item nodes and parses calc-item expression dependencies.
+- [partial] extractor.columns | Column extraction | Creates column nodes and parses calculated-column expressions for dependencies.
+- [partial] extractor.field_params | Field parameter tables | Experimental: detects field parameter tables and parses partition-source dependencies.
+- [partial] extractor.measures | Measure extraction | Creates measure nodes and resolves common DAX dependency reference patterns.
+- [partial] extractor.relationships | Relationship extraction | Extracts relationship properties and IDs; relationship edge enrichment is limited.
 
 Unknown Patterns
 - none

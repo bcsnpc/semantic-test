@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -93,6 +94,12 @@ class ScanUxIntegrationTests(unittest.TestCase):
             self.assertEqual(payload["scan_input_path"], str(model_root))
             self.assertIn("selected_model_definition_path", payload)
             self.assertIn("models_detected_count", payload)
+            unresolved_items = [
+                item
+                for group in payload["issues"]["unresolved_references"]
+                for item in group.get("items", [])
+            ]
+            self.assertTrue(any("did_you_mean" in item for item in unresolved_items))
 
     def test_debug_mode_includes_coverage_matrix(self) -> None:
         with self.runner.isolated_filesystem():
@@ -122,8 +129,12 @@ class ScanUxIntegrationTests(unittest.TestCase):
             report_text = (run_folder / "report.txt").read_text(encoding="utf-8")
             definition_path = (model_a / "definition").resolve()
 
-            self.assertIn(f"semantic-test scan {definition_path} --strict", report_text)
+            self.assertIn(
+                f'python -m semantic_test.cli.main scan "{definition_path}" --strict',
+                report_text,
+            )
             self.assertNotIn("semantic-test scan . --strict", report_text)
+            self.assertIn(f'"{definition_path}"', report_text)
 
     def test_multi_model_root_error_shows_specific_model_rerun_hint(self) -> None:
         with self.runner.isolated_filesystem():
@@ -137,8 +148,19 @@ class ScanUxIntegrationTests(unittest.TestCase):
             run_folder = _latest_run_folder(Path(".semantic-test") / "runs")
             report_text = (run_folder / "report.txt").read_text(encoding="utf-8")
             self.assertIn("Next Actions", report_text)
-            self.assertIn("semantic-test scan", report_text)
+            self.assertIn("python -m semantic_test.cli.main scan", report_text)
             self.assertNotIn("semantic-test scan . --strict", report_text)
+
+    def test_next_actions_includes_cli_install_hint_when_semantic_test_missing(self) -> None:
+        with self.runner.isolated_filesystem():
+            model_root = _write_model_with_unresolved(Path("."), "ModelA")
+            with patch("semantic_test.cli.commands.scan.shutil.which", return_value=None):
+                result = self.runner.invoke(app, ["scan", str(model_root)])
+            self.assertEqual(result.exit_code, 0, msg=result.stdout)
+
+            run_folder = _latest_run_folder(Path(".semantic-test") / "runs")
+            report_text = (run_folder / "report.txt").read_text(encoding="utf-8")
+            self.assertIn("Install CLI entrypoint (dev): pip install -e .", report_text)
 
 
 def _write_model_clean(base: Path, model_name: str) -> Path:

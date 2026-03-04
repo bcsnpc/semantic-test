@@ -1,0 +1,2 @@
+Suggested fix (option 1, score 100): DIVIDE([Feedback Rating Measure1], [Timeto resolve sum1])
+Suggested fix (option 2, score 72): DIVIDE([Timeto resolve sum1], [Timeto resolve sum1])
