@@ -1,59 +1,31 @@
 ﻿# semantic-test
 
-`semantic-test` is a Python CLI for **structural analysis** of Power BI semantic models.
+`semantic-test` is a Python CLI for structural analysis of Power BI semantic models and report lineage.
 
 It helps teams answer:
 - What objects exist in the model?
 - What changed between two model versions?
 - What is the blast radius of those changes?
 - Why unresolved references exist and what likely fixes are available?
-- Which visuals depend on a semantic object?
+- Which report visuals depend on a semantic object?
 
-## Phase-1 Status
+## Features
 
-Phase-1 is implemented and production-usable for structural review workflows.
-
-Available commands:
-- `scan`
-- `diff`
-- `exposure`
-- `trace`
-
-Phase-2 (`semantic-test test <yaml>`) is spec-only and not yet implemented.
-
-For architecture details, see:
-- [Phase-1 Architecture](docs/PHASE1_ARCHITECTURE.md)
-- [Coverage Matrix](docs/coverage.md)
-- [Detailed DAX Coverage Registry](COVERAGE.md)
-
-## What Phase-1 Includes
-
-- PBIP/TMDL definition discovery (`*.SemanticModel/definition`)
-- PBIX report parsing support for visual lineage
-- Live Desktop semantic scan (`scan desktop`)
-- Live Desktop visual lineage via process-correlated PBIX report artifacts (when available)
-- Object inventory extraction (tables, columns, measures, relationships, calc groups/items, field params)
-- Dependency graph construction
-- Deterministic snapshot generation and snapshot hashing
-- Snapshot diff (`AddedObject`, `RemovedObject`, `ModifiedObject`)
-- Exposure/blast-radius report
-- Object trace (upstream/downstream)
-- Trace visual dependencies (downstream visuals for semantic objects)
-- Mermaid export from trace (`--export mmd`, `--export mmd-simple`)
-- Strict CI gate (`--strict` + exit code `2`)
-- Rich unresolved diagnostics in scan output, including:
-  - expected type/scope
-  - likely cause + action
-  - best guess + score
-  - scored `did_you_mean` suggestions
-  - suggested fix options with confidence score
-
-## What Phase-1 Does Not Include
-
-- DAX execution/runtime evaluation
-- KPI correctness validation
-- severity labels (`High`, `Medium`, `Low`)
-- cross-model lineage
+- Semantic model discovery from PBIP/TMDL definition folders
+- Live Desktop semantic extraction (`scan desktop`) via local Analysis Services DMVs
+- Report visual lineage extraction from:
+  - PBIP/PBIR report definition folders
+  - PBIX files
+  - process-correlated live Desktop PBIX artifacts (when available)
+- Canonical object inventory: tables, columns, measures, relationships, calc groups/items, field parameters, visuals
+- Dependency graph build and deterministic snapshot hashing
+- Snapshot comparison (`diff`) and blast radius analysis (`exposure`)
+- Object lineage trace (`trace`) with downstream visual dependency details
+- Mermaid trace export:
+  - `--export mmd` (full)
+  - `--export mmd-simple` (cleaned business-readable)
+- Strict CI gating (`--strict` + exit code `2`)
+- Rich unresolved diagnostics with ranked suggestions and fix hints
 
 ## Install
 
@@ -78,7 +50,7 @@ Install for local development:
 pip install -e .
 ```
 
-## Update (No Manual Uninstall Needed)
+## Update
 
 ```bash
 pip install --upgrade --no-cache-dir "git+https://github.com/bcsnpc/semantic-test.git"
@@ -90,34 +62,20 @@ Editable local clone update:
 git pull
 ```
 
-## Core Usage
-
-Use module form (works even if `semantic-test` entrypoint is unavailable):
+## Commands
 
 ```bash
 python -m semantic_test.cli.main scan "<model_path>"
+python -m semantic_test.cli.main scan desktop
+python -m semantic_test.cli.main scan desktop:<port>
 python -m semantic_test.cli.main diff "<before_path>" "<after_path>"
 python -m semantic_test.cli.main exposure "<before_path>" "<after_path>" --json
 python -m semantic_test.cli.main trace "<object_id>" "<model_path>" --depth 5
-```
-
-Desktop mode:
-
-```bash
-python -m semantic_test.cli.main scan desktop
-python -m semantic_test.cli.main scan desktop:<port>
-```
-
-Trace Mermaid export:
-
-```bash
 python -m semantic_test.cli.main trace "<object_id>" "<model_path>" --depth 5 --export mmd
 python -m semantic_test.cli.main trace "<object_id>" "<model_path>" --depth 5 --export mmd-simple
 ```
 
 ## Output Artifacts
-
-Default output root (under the resolved project/model root):
 
 ```text
 .semantic-test/
@@ -128,7 +86,7 @@ Default output root (under the resolved project/model root):
       snapshot.json
       report.txt
       report.json
-      trace_graph.mmd   # when trace --export mmd or --export mmd-simple is used
+      trace_graph.mmd   # when trace --export is used
 ```
 
 ## Exit Codes
@@ -137,18 +95,10 @@ Default output root (under the resolved project/model root):
 - `1`: runtime/tool failure
 - `2`: strict structural policy failure (`--strict`)
 
-## Recommended PR Workflow
-
-```bash
-python -m semantic_test.cli.main scan "<model_path>" --strict
-python -m semantic_test.cli.main exposure "<before_path>" "<after_path>" --format text
-```
-
 ## Documentation
 
 - [User Guide](docs/USER_GUIDE.md)
-- [Architecture (Consolidated)](docs/ARCHITECTURE.md)
-- [Phase-1 Architecture](docs/PHASE1_ARCHITECTURE.md)
+- [semantic-test Architecture](docs/SEMANTIC_TEST_ARCHITECTURE.md)
 - [Coverage Matrix](docs/coverage.md)
 - [Detailed Coverage Registry](COVERAGE.md)
 

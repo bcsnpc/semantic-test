@@ -1,22 +1,21 @@
-﻿# semantic-test User Guide (Beginner-Friendly)
+﻿# semantic-test User Guide
 
 Last updated: 2026-03-07
 
-This guide is written for first-time PowerShell users.
-All commands are copy/paste ready.
+This guide is step-by-step for installing and running all current `semantic-test` capabilities.
 
-## 1. What This Tool Is
+## 1. What the Tool Does
 
-`semantic-test` checks model structure for Power BI semantic models.
+`semantic-test` analyzes Power BI semantic structure and report lineage.
 
-It answers:
-- What objects exist?
-- What changed?
-- What is impacted downstream?
-- What references are unresolved, and what are likely fixes?
-- Which report visuals depend on a semantic object?
-
-It does not run DAX or validate KPI business correctness.
+It supports:
+- Scan semantic metadata and dependencies
+- Scan live Desktop model metadata
+- Extract visual lineage from PBIP/PBIX/desktop-correlated artifacts
+- Compare versions (`diff`)
+- Analyze downstream impact (`exposure`)
+- Trace object lineage (`trace`)
+- Export trace graphs to Mermaid (`mmd`, `mmd-simple`)
 
 ## 2. Install
 
@@ -24,165 +23,126 @@ It does not run DAX or validate KPI business correctness.
 pip install "git+https://github.com/bcsnpc/semantic-test.git"
 ```
 
-If `semantic-test` is not found, use module mode (always works):
+If `semantic-test` command is unavailable, use module mode:
 
 ```powershell
 python -m semantic_test.cli.main --help
 ```
 
-## 3. Update Later (No Uninstall Needed)
+## 3. Upgrade
 
 ```powershell
 pip install --upgrade --no-cache-dir "git+https://github.com/bcsnpc/semantic-test.git"
 ```
 
-If you use editable local repo install (`pip install -e .`):
+## 4. Local Dev Install
 
 ```powershell
 cd <repo>
-git pull
+pip install -e .
 ```
 
-## 4. Most Important Rule
+## 5. Model Path Rule
 
-Do not run `scan .` in a folder containing many models.
-Use a specific model path.
-
-Example:
+Avoid `scan .` if your folder has multiple semantic models.
+Use an explicit model path.
 
 ```powershell
 python -m semantic_test.cli.main scan "D:\path\to\YourModelRoot"
 ```
 
-## 5. Phase-1 Commands
+## 6. Commands
 
-- `scan`
-- `diff`
-- `exposure`
-- `trace`
-
-Phase-2 `semantic-test test` is not implemented yet.
-
-## 6. Command Examples
-
-### Scan
+### 6.1 Scan (PBIP/TMDL)
 
 ```powershell
 python -m semantic_test.cli.main scan "D:\path\to\YourModelRoot"
 python -m semantic_test.cli.main scan "D:\path\to\YourModelRoot" --strict
-python -m semantic_test.cli.main scan "D:\path\to\YourModelRoot" --debug
+python -m semantic_test.cli.main scan "D:\path\to\YourModelRoot" --debug --stdout json
 ```
 
-Desktop scan:
+### 6.2 Scan (Live Desktop)
 
 ```powershell
 python -m semantic_test.cli.main scan desktop
 python -m semantic_test.cli.main scan desktop:64078
+python -m semantic_test.cli.main scan desktop --debug --stdout json
 ```
 
-### Diff
+### 6.3 Diff
 
 ```powershell
 python -m semantic_test.cli.main diff "D:\path\to\ModelA" "D:\path\to\ModelB"
 python -m semantic_test.cli.main diff "D:\path\to\ModelA" "D:\path\to\ModelB" --format json
 ```
 
-### Exposure
+### 6.4 Exposure
 
 ```powershell
+python -m semantic_test.cli.main exposure "D:\path\to\ModelA" "D:\path\to\ModelB"
 python -m semantic_test.cli.main exposure "D:\path\to\ModelA" "D:\path\to\ModelB" --json
 ```
 
-### Trace
+### 6.5 Trace
 
 ```powershell
 python -m semantic_test.cli.main trace "Measure:Sales.Total Revenue" "D:\path\to\YourModelRoot" --depth 5
+python -m semantic_test.cli.main trace "Measure:Sales.Total Revenue" "D:\path\to\YourModelRoot" --upstream --downstream --depth 5
 ```
 
-Trace with Mermaid export:
+### 6.6 Trace Mermaid Export
 
 ```powershell
 python -m semantic_test.cli.main trace "Measure:Sales.Total Revenue" "D:\path\to\YourModelRoot" --depth 5 --export mmd
 python -m semantic_test.cli.main trace "Measure:Sales.Total Revenue" "D:\path\to\YourModelRoot" --depth 5 --export mmd-simple
 ```
 
-## 7. Understanding Scan Output
+Output file:
+- `<model_root>\.semantic-test\runs\<RUN_ID>\trace_graph.mmd`
 
-Common statuses:
-- `CLEAN`
-- `STRUCTURAL_ISSUES`
-- `ERROR`
-
-For unresolved references, scan shows:
-- reason + severity
-- `expected_type`, `expected_scope`, `likely_cause`
-- `action` (what to do next)
-- `best_guess` and score (when confidence is high)
-- scored `did_you_mean_top3`
-- optional suggested fix options with combined score
-
-## 8. Next Actions Block
-
-The tool prints copy/paste commands that match how you ran it.
-
-If you run with module mode, it will suggest:
-- `python -m semantic_test.cli.main ...`
-
-If CLI is installed, it may also show:
-- `semantic-test ...`
-
-All paths are quoted to handle spaces.
-
-If CLI is missing, scan shows this quick hint:
-- `Install CLI entrypoint (dev): pip install -e .`
-
-## 9. Output Files
-
-Per run, files are written to:
-
-- `<model_root>\.semantic-test\runs\<RUN_ID>\report.txt`
-- `<model_root>\.semantic-test\runs\<RUN_ID>\report.json`
-- `<model_root>\.semantic-test\runs\<RUN_ID>\snapshot.json`
-- `<model_root>\.semantic-test\runs\<RUN_ID>\manifest.json`
-- `<model_root>\.semantic-test\runs\<RUN_ID>\trace_graph.mmd` (only when `trace --export` is used)
-
-Index file:
-- `<model_root>\.semantic-test\index.json`
-
-## 10. Exit Codes
-
-- `0` success
-- `1` runtime/tool error
-- `2` strict structural violations (`--strict`)
-
-## 11. Canonical IDs for Trace
+## 7. Canonical Object IDs
 
 - Table: `Table:Sales`
 - Column: `Column:Sales.Amount`
 - Measure: `Measure:Sales.Total Revenue`
-- Relationship: `Relationship:Sales.DateKey->Date.DateKey`
+- Relationship: `Rel:Sales.CustomerKey->Customer.CustomerKey`
+- Visual: `Visual:PageName.VisualId`
 
-## 12. Visual Lineage Notes
+## 8. Output Files
 
-- PBIP/PBIR report definitions are supported for visual lineage.
-- PBIX files on disk are supported for visual lineage.
-- Desktop semantic extraction works from local Analysis Services DMVs.
-- Desktop visual lineage is available when a report artifact (for example PBIX) can be linked to the active Desktop session.
-- If live visual artifacts are not discoverable in the current environment, `scan desktop --debug` reports this explicitly.
+Per run:
+- `report.txt`
+- `report.json`
+- `snapshot.json`
+- `manifest.json`
+- `trace_graph.mmd` (trace export only)
 
-## 13. Quick Troubleshooting
+Stored under:
+- `<model_root>\.semantic-test\runs\<RUN_ID>\...`
 
-### `semantic-test` not recognized
-Use:
+Index:
+- `<model_root>\.semantic-test\index.json`
+
+## 9. Exit Codes
+
+- `0` success
+- `1` runtime/tool error
+- `2` strict policy failure
+
+## 10. Troubleshooting
+
+### 10.1 `semantic-test` not recognized
 
 ```powershell
 python -m semantic_test.cli.main --help
 ```
 
-### Multiple definition folders found
-Use a specific model path, not repo root.
+### 10.2 Multiple models detected
 
-### `trace` says no previous snapshot
+Use an explicit model path instead of repo root.
+
+### 10.3 Trace says no snapshot found
+
 Run scan first:
 
 ```powershell
@@ -190,29 +150,28 @@ python -m semantic_test.cli.main scan "<model_path>" --stdout none
 python -m semantic_test.cli.main trace "<object_id>" "<model_path>"
 ```
 
-### `scan desktop --debug` shows visual lineage unavailable
+### 10.4 Desktop visual lineage unavailable
 
-Run:
+Run debug and inspect:
 
 ```powershell
 python -m semantic_test.cli.main scan desktop --debug --stdout json
 ```
 
-Check:
+Useful keys:
 - `debug.parity_diagnostics.visual_lineage.status`
 - `debug.parity_diagnostics.visual_lineage.reason`
 - `debug.parity_diagnostics.visual_discovery`
 
-For same-model parity comparison, set:
+Optional same-model parity compare target:
 
 ```powershell
 $env:SEMANTIC_TEST_PARITY_COMPARE_PATH="D:\path\to\YourModelRoot"
 python -m semantic_test.cli.main scan desktop --debug --stdout json
 ```
 
-## 14. Architecture & Coverage Docs
+## 11. Documentation
 
-- [Phase-1 Architecture](PHASE1_ARCHITECTURE.md)
-- [Architecture (Consolidated)](ARCHITECTURE.md)
+- [semantic-test Architecture](SEMANTIC_TEST_ARCHITECTURE.md)
 - [Coverage Matrix](coverage.md)
 - [Detailed DAX Coverage Registry](../COVERAGE.md)

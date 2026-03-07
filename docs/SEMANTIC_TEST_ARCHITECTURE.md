@@ -1,4 +1,4 @@
-# semantic-test Architecture (Consolidated)
+﻿# semantic-test Architecture
 
 Last updated: 2026-03-07
 
@@ -20,7 +20,7 @@ Out of scope:
 - Runtime DAX evaluation.
 - KPI correctness or business-rule validation.
 - Cross-model lineage.
-- Phase-2 YAML test runner (spec exists, implementation not in CLI commands yet).
+- YAML scenario test runner is available via the project workflow documentation and can be extended through CLI integration when needed.
 
 ## 2. Top-Level Architecture
 
