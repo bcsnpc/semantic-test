@@ -1,6 +1,6 @@
 ﻿# Phase-1 Architecture
 
-Last updated: 2026-03-04
+Last updated: 2026-03-07
 
 ## 1. Objective
 
@@ -23,12 +23,15 @@ Phase-1 commands:
 
 Delivered capabilities:
 - PBIP model definition discovery (`*.SemanticModel/definition`)
+- PBIX report parsing for visual lineage
+- Desktop semantic scan from local Analysis Services DMVs
 - inventory extraction for tables, columns, measures, relationships, calc groups/items, field parameters
 - dependency graph build for upstream/downstream analysis
 - snapshot creation and deterministic hashing
 - snapshot differencing between two versions
 - blast-radius (`exposure`) report
 - point trace from object id (`trace`)
+- trace Mermaid export (`--export mmd`, `--export mmd-simple`)
 - strict-mode CI policy (`--strict` with exit code `2`)
 
 ## 3. High-Level Flow

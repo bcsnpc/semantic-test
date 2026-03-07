@@ -210,8 +210,9 @@ class MeasureExtractorTests(unittest.TestCase):
                 "tables/Metrics.tmdl",
                 "\n".join(
                     [
-                        "table Metrics",
+                        "table Other",
                         "\tcolumn Feedback Rating Measure",
+                        "table Metrics",
                         "\tmeasure Feedback Rating Measure1 = 1",
                         "\tmeasure KPI = [Feedback Rating Measure]",
                     ]
@@ -226,6 +227,113 @@ class MeasureExtractorTests(unittest.TestCase):
         top3 = issue.get("did_you_mean_top3_ranked", [])
         self.assertTrue(top3)
         self.assertTrue(all(str(item.get("candidate", "")).startswith("measure:") for item in top3))
+
+    def test_var_local_symbol_is_not_reported_unresolved(self) -> None:
+        docs = [
+            (
+                "tables/Metrics.tmdl",
+                "\n".join(
+                    [
+                        "table Metrics",
+                        "\tmeasure Base = 1",
+                        "\tmeasure KPI = VAR [new period] = [Base] RETURN [new period]",
+                    ]
+                ),
+                "dummy",
+            )
+        ]
+        parsed = parse_tmdl_documents(docs)
+
+        inventory = extract_measures(parsed)
+        kpi = inventory["Measure:Metrics.KPI"]
+
+        self.assertIn("Measure:Metrics.Base", kpi["dependencies"])
+        self.assertEqual(kpi["unresolved_references"], [])
+        self.assertFalse(any("new period" in item for item in kpi["unknown_patterns"]))
+
+    def test_virtual_alias_from_addcolumns_is_not_reported_unresolved(self) -> None:
+        docs = [
+            (
+                "tables/Metrics.tmdl",
+                "\n".join(
+                    [
+                        "table Date",
+                        "\tcolumn Date",
+                        "table Metrics",
+                        "\tmeasure Base = 1",
+                        (
+                            '\tmeasure KPI = COUNTROWS(FILTER('
+                            "ADDCOLUMNS(VALUES('Date'[Date]), \"new period\", [Base]), "
+                            "[new period] > 0))"
+                        ),
+                    ]
+                ),
+                "dummy",
+            )
+        ]
+        parsed = parse_tmdl_documents(docs)
+
+        inventory = extract_measures(parsed)
+        kpi = inventory["Measure:Metrics.KPI"]
+
+        self.assertIn("Measure:Metrics.Base", kpi["dependencies"])
+        self.assertIn("Column:Date.Date", kpi["dependencies"])
+        self.assertEqual(kpi["unresolved_references"], [])
+        self.assertFalse(any("new period" in item for item in kpi["unknown_patterns"]))
+
+    def test_virtual_alias_from_selectcolumns_and_summarize_not_reported_unresolved(self) -> None:
+        docs = [
+            (
+                "tables/Metrics.tmdl",
+                "\n".join(
+                    [
+                        "table Date",
+                        "\tcolumn Date",
+                        "table Metrics",
+                        "\tmeasure Base = 1",
+                        (
+                            '\tmeasure KPI = COUNTROWS(FILTER('
+                            "SELECTCOLUMNS(SUMMARIZE('Date', 'Date'[Date], \"alias1\", [Base]), "
+                            "\"alias2\", [alias1]), [alias2] > 0))"
+                        ),
+                    ]
+                ),
+                "dummy",
+            )
+        ]
+        parsed = parse_tmdl_documents(docs)
+
+        inventory = extract_measures(parsed)
+        kpi = inventory["Measure:Metrics.KPI"]
+
+        self.assertIn("Measure:Metrics.Base", kpi["dependencies"])
+        self.assertIn("Column:Date.Date", kpi["dependencies"])
+        self.assertEqual(kpi["unresolved_references"], [])
+        self.assertFalse(any("alias1" in item or "alias2" in item for item in kpi["unknown_patterns"]))
+
+    def test_duplicate_unresolved_refs_are_deduplicated_per_expression(self) -> None:
+        docs = [
+            (
+                "tables/Metrics.tmdl",
+                "\n".join(
+                    [
+                        "table Metrics",
+                        "\tmeasure KPI = [MissingX] + [MissingX] + IF([MissingX] > 0, 1, 0)",
+                    ]
+                ),
+                "dummy",
+            )
+        ]
+        parsed = parse_tmdl_documents(docs)
+        inventory = extract_measures(parsed)
+        kpi = inventory["Measure:Metrics.KPI"]
+
+        self.assertEqual(
+            [pattern for pattern in kpi["unknown_patterns"] if pattern == "unresolved_measure:[MissingX]"],
+            ["unresolved_measure:[MissingX]"],
+        )
+        unresolved = [item for item in kpi["unresolved_references"] if item.get("ref") == "[MissingX]"]
+        self.assertEqual(len(unresolved), 1)
 
 
 if __name__ == "__main__":

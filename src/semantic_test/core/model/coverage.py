@@ -1,4 +1,4 @@
-"""Coverage model for parser/extractor support disclosure."""
+﻿"""Coverage model for parser/extractor support disclosure."""
 
 from __future__ import annotations
 

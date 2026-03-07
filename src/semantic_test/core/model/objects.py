@@ -18,6 +18,7 @@ class ObjectType(str, Enum):
     FIELD_PARAMETER = "FieldParam"
     HIERARCHY = "Hierarchy"
     LEVEL = "Level"
+    VISUAL = "Visual"
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,5 +107,9 @@ def object_id(
             "Level:"
             f"{_require(table, 'table')}.{_require(parent, 'parent')}.{_require(name, 'name')}"
         )
+
+    if obj_type is ObjectType.VISUAL:
+        # parent = page display name, name = visual_id (first 12 chars)
+        return f"Visual:{_require(parent, 'parent')}.{_require(name, 'name')}"
 
     raise ValueError(f"Unsupported object type: {obj_type}")

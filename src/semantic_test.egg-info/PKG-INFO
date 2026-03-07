@@ -6,111 +6,106 @@ Requires-Python: >=3.10
 Description-Content-Type: text/markdown
 Requires-Dist: typer<1.0,>=0.12
 
-# semantic-test
+﻿# semantic-test
 
-`semantic-test` performs structural analysis for Power BI semantic models (PBIP/TMDL):
-- object inventory (tables, columns, measures, relationships, calc groups, field parameters)
-- deterministic snapshot generation
-- snapshot diffing (added/removed/modified objects)
-- downstream exposure enumeration for changed objects
+`semantic-test` is a Python CLI for **structural analysis** of Power BI semantic models (PBIP/TMDL).
 
-## What It Does
+It helps teams answer:
+- What objects exist in the model?
+- What changed between two model versions?
+- What is the blast radius of those changes?
+- Why unresolved references exist and what likely fixes are available?
 
-- Parses model definitions from `*.SemanticModel/definition/`.
-- Extracts dependency links and builds a directed dependency graph.
-- Produces PR-friendly text reports and machine-readable JSON artifacts.
-- Persists run artifacts under `.semantic-test/runs/<RUN_ID>/` for traceability.
+## Phase-1 Status
 
-## What It Does Not Do
+Phase-1 is implemented and production-usable for structural review workflows.
 
-- Does not assign severity labels (`High`, `Medium`, `Low`).
-- Does not predict KPI/business impact correctness.
-- Does not execute DAX or validate report visuals.
+Available commands:
+- `scan`
+- `diff`
+- `exposure`
+- `trace`
 
-All outputs should be interpreted as structural exposure only.
+Phase-2 (`semantic-test test <yaml>`) is spec-only and not yet implemented.
 
-## Offline Security Model
+For architecture details, see:
+- [Phase-1 Architecture](docs/PHASE1_ARCHITECTURE.md)
+- [Coverage Matrix](docs/coverage.md)
+- [Detailed DAX Coverage Registry](COVERAGE.md)
 
-- Runs locally against files on disk.
-- No outbound network calls are required for scan/trace/diff/exposure workflows.
-- Artifacts are written locally under `.semantic-test/` (or `--outdir`).
-- Suitable for restricted CI environments where internet egress is blocked.
+## What Phase-1 Includes
+
+- PBIP/TMDL definition discovery (`*.SemanticModel/definition`)
+- Object inventory extraction (tables, columns, measures, relationships, calc groups/items, field params)
+- Dependency graph construction
+- Deterministic snapshot generation and snapshot hashing
+- Snapshot diff (`AddedObject`, `RemovedObject`, `ModifiedObject`)
+- Exposure/blast-radius report
+- Object trace (upstream/downstream)
+- Strict CI gate (`--strict` + exit code `2`)
+- Rich unresolved diagnostics in scan output, including:
+  - expected type/scope
+  - likely cause + action
+  - best guess + score
+  - scored `did_you_mean` suggestions
+  - suggested fix options with confidence score
+
+## What Phase-1 Does Not Include
+
+- DAX execution/runtime evaluation
+- KPI correctness validation
+- severity labels (`High`, `Medium`, `Low`)
+- cross-model lineage
 
 ## Install
 
 Requirements:
 - Python 3.10+
 
+Install from GitHub:
+
+```bash
+pip install "git+https://github.com/bcsnpc/semantic-test.git"
+```
+
+If command is not on PATH:
+
+```bash
+python -m semantic_test.cli.main --help
+```
+
+Install for local development:
+
 ```bash
 pip install -e .
-semantic-test --help
 ```
 
-## Commands and Examples
-
-The commands below are copy-paste runnable from repo root.
-
-### Scan
+## Update (No Manual Uninstall Needed)
 
 ```bash
-semantic-test scan tests/fixtures/regression_models/model_a
+pip install --upgrade --no-cache-dir "git+https://github.com/bcsnpc/semantic-test.git"
 ```
 
+Editable local clone update:
+
 ```bash
-semantic-test scan tests/fixtures/regression_models/model_a --format both --stdout text
+git pull
 ```
 
-Strict policy gate:
+## Core Usage
+
+Use module form (works even if `semantic-test` entrypoint is unavailable):
 
 ```bash
-semantic-test scan tests/fixtures/regression_models/model_a --strict
-```
-
-### Diff
-
-```bash
-semantic-test diff tests/fixtures/regression_models/model_a tests/fixtures/regression_models/model_b
-```
-
-```bash
-semantic-test diff tests/fixtures/regression_models/model_a tests/fixtures/regression_models/model_b --format json
-```
-
-Auto-previous mode (uses index):
-
-```bash
-semantic-test diff tests/fixtures/regression_models/model_a
-```
-
-### Trace
-
-```bash
-semantic-test trace "Measure:Metrics.Executive KPI" tests/fixtures/regression_models/model_a --depth 5
-```
-
-```bash
-semantic-test trace "Measure:Metrics.Executive KPI" tests/fixtures/regression_models/model_a --upstream --depth 3
-```
-
-### Exposure
-
-```bash
-semantic-test exposure tests/fixtures/regression_models/model_a tests/fixtures/regression_models/model_b
-```
-
-```bash
-semantic-test exposure tests/fixtures/regression_models/model_a tests/fixtures/regression_models/model_b --json
-```
-
-Auto-previous mode (uses index):
-
-```bash
-semantic-test exposure tests/fixtures/regression_models/model_a
+python -m semantic_test.cli.main scan "<model_path>"
+python -m semantic_test.cli.main diff "<before_path>" "<after_path>"
+python -m semantic_test.cli.main exposure "<before_path>" "<after_path>" --json
+python -m semantic_test.cli.main trace "<object_id>" "<model_path>" --depth 5
 ```
 
 ## Output Artifacts
 
-Default output root:
+Default output root (under the resolved project/model root):
 
 ```text
 .semantic-test/
@@ -123,51 +118,31 @@ Default output root:
       report.json
 ```
 
-Command-specific files:
-- `scan`: `report.txt`, `report.json`, `snapshot.json`, `manifest.json`
-- `trace`: `report.txt`, `report.json`, `snapshot.json`, `manifest.json`
-- `diff`: `report.txt`, `report.json`, `snapshot.json`, `manifest.json` (`diff_report.*` legacy copies are also emitted)
-- `exposure`: `report.txt`, `report.json`, `snapshot.json`, `manifest.json`
-
 ## Exit Codes
 
 - `0`: success
-- `1`: runtime error (invalid path, parse/runtime failure)
-- `2`: strict policy failure (`--strict`)
+- `1`: runtime/tool failure
+- `2`: strict structural policy failure (`--strict`)
 
-Strict policy currently fails when:
-- unknown patterns are found
-- unresolved refs are found
-
-## Coverage and Limitations
-
-- Coverage matrix is printed in command outputs.
-- Detailed coverage status: [docs/coverage.md](docs/coverage.md)
-- Known gaps, unknown patterns, and unresolved refs are always disclosed in reports.
-- Parsing and dependency extraction are intentionally conservative and may under-report uncommon syntax.
-- Calculation groups and field parameters are included with experimental coverage notes.
-
-## How To Use In PR Review
-
-Recommended flow:
+## Recommended PR Workflow
 
 ```bash
-semantic-test scan <model_path> --strict
-semantic-test exposure <model_path> --format text
+python -m semantic_test.cli.main scan "<model_path>" --strict
+python -m semantic_test.cli.main exposure "<before_path>" "<after_path>" --format text
 ```
 
-Review checklist:
-- Confirm changed object list is expected.
-- Review downstream dependents for affected tables/measures.
-- Check unknown patterns and unresolved refs sections (must be empty for clean gate).
-- Attach `report.txt` (and optionally `report.json`) to the PR discussion.
+## Documentation
 
-Phase 2 preview: severity scoring and policy profiles can be layered on top of these artifacts without changing core snapshot/exposure format contracts.
+- [User Guide](docs/USER_GUIDE.md)
+- [Phase-1 Architecture](docs/PHASE1_ARCHITECTURE.md)
+- [Coverage Matrix](docs/coverage.md)
+- [Detailed Coverage Registry](COVERAGE.md)
 
 ## Development
 
-Run tests locally:
+Run tests from local source:
 
 ```bash
-pytest -q
+$env:PYTHONPATH="<repo>\\src"
+python -m unittest
 ```

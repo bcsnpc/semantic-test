@@ -15,6 +15,14 @@ _UNQUOTED_COLUMN_REF_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\[([^\]]+)\]")
 _MEASURE_REF_RE = re.compile(r"(?<![A-Za-z0-9_'])\[([^\[\]]+)\]")
 _SELECTED_MEASURE_RE = re.compile(r"\bSELECTEDMEASURE\s*\(", re.IGNORECASE)
 _SELECTED_MEASURE_NAME_RE = re.compile(r"\bSELECTEDMEASUREName\s*\(", re.IGNORECASE)
+_VAR_NAME_RE = re.compile(r"\bVAR\s+([A-Za-z_][A-Za-z0-9_]*)\s*=", re.IGNORECASE)
+_VAR_BRACKET_NAME_RE = re.compile(r"\bVAR\s+\[([^\]]+)\]\s*=", re.IGNORECASE)
+_STRING_LITERAL_RE = re.compile(r'"([^"]*)"')
+_ROW_CONTEXT_FUNCTION_RE = re.compile(
+    r"\b(SUMX|AVERAGEX|MINX|MAXX|FILTER|ADDCOLUMNS|SELECTCOLUMNS|ROW|SUMMARIZE|SUMMARIZECOLUMNS)\s*\(",
+    re.IGNORECASE,
+)
+_VIRTUAL_ALIAS_FUNCTIONS = ("SUMMARIZE", "SUMMARIZECOLUMNS", "ADDCOLUMNS", "SELECTCOLUMNS", "ROW")
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,25 +80,50 @@ def build_measure_name_index(parsed: ParsedModel) -> dict[str, set[str]]:
 
 def build_reference_registry(parsed: ParsedModel) -> dict[str, Any]:
     """Build global reference registry used for expression resolution."""
+    table_names = [table.name for table in parsed.tables]
+    columns = [
+        (column.table, column.name)
+        for column in parsed.columns
+        if column.table
+    ]
+    measures = [
+        (measure.table, measure.name)
+        for measure in parsed.measures
+    ]
+    return build_reference_registry_from_inventory(
+        table_names=table_names,
+        columns=columns,
+        measures=measures,
+    )
+
+
+def build_reference_registry_from_inventory(
+    *,
+    table_names: list[str],
+    columns: list[tuple[str | None, str]],
+    measures: list[tuple[str | None, str]],
+) -> dict[str, Any]:
+    """Build canonical resolver index from a normalized semantic inventory."""
     measure_name_to_ids: dict[str, set[str]] = defaultdict(set)
+    measure_name_to_ids_canonical: dict[str, set[str]] = defaultdict(set)
     measure_key_to_id: dict[tuple[str, str], str] = {}
     tables_by_lower: dict[str, str] = {}
     columns_by_table_lower: dict[tuple[str, str], str] = {}
     column_names_by_table_lower: dict[str, set[str]] = defaultdict(set)
+    column_name_to_ids_canonical: dict[str, set[str]] = defaultdict(set)
     all_columns: list[tuple[str, str]] = []
     all_measures: list[tuple[str, str]] = []
+    measure_home_table_by_id: dict[str, str] = {}
 
-    for table in parsed.tables:
-        table_name = table.name.strip()
+    for table_name_raw in table_names:
+        table_name = str(table_name_raw or "").strip()
         if not table_name:
             continue
         tables_by_lower.setdefault(table_name.lower(), table_name)
 
-    for column in parsed.columns:
-        if not column.table:
-            continue
-        table_name = column.table.strip()
-        column_name = column.name.strip()
+    for table_name_raw, column_name_raw in columns:
+        table_name = str(table_name_raw or "").strip()
+        column_name = str(column_name_raw or "").strip()
         if not table_name or not column_name:
             continue
         canonical_id = ObjectRef(
@@ -99,19 +132,23 @@ def build_reference_registry(parsed: ParsedModel) -> dict[str, Any]:
             name=column_name,
         ).canonical_id()
         table_key = table_name.lower()
-        columns_by_table_lower[(table_key, column_name.lower())] = canonical_id
+        column_key = _canonical_symbol(column_name)
+        columns_by_table_lower[(table_key, column_key)] = canonical_id
         column_names_by_table_lower[table_key].add(column_name)
+        column_name_to_ids_canonical[column_key].add(canonical_id)
         all_columns.append((table_name, column_name))
 
-    for measure in parsed.measures:
-        measure_name = measure.name.strip()
-        table_name = (measure.table or "").strip()
+    for table_name_raw, measure_name_raw in measures:
+        measure_name = str(measure_name_raw or "").strip()
+        table_name = str(table_name_raw or "").strip()
         if not measure_name:
             continue
         ref = ObjectRef(type=ObjectType.MEASURE, table=table_name or None, name=measure_name)
         canonical_id = ref.canonical_id()
         measure_name_to_ids[measure_name].add(canonical_id)
-        measure_key_to_id[(table_name.lower(), measure_name.lower())] = canonical_id
+        measure_name_to_ids_canonical[_canonical_symbol(measure_name)].add(canonical_id)
+        measure_key_to_id[(table_name.lower(), _canonical_symbol(measure_name))] = canonical_id
+        measure_home_table_by_id[canonical_id] = table_name
         all_measures.append((table_name, measure_name))
 
     return {
@@ -121,8 +158,15 @@ def build_reference_registry(parsed: ParsedModel) -> dict[str, Any]:
             table_key: sorted(names)
             for table_key, names in column_names_by_table_lower.items()
         },
+        "column_name_to_ids_canonical": {
+            key: set(value) for key, value in column_name_to_ids_canonical.items()
+        },
         "measure_name_to_ids": dict(measure_name_to_ids),
+        "measure_name_to_ids_canonical": {
+            key: set(value) for key, value in measure_name_to_ids_canonical.items()
+        },
         "measure_key_to_id": measure_key_to_id,
+        "measure_home_table_by_id": measure_home_table_by_id,
         "all_columns": sorted(set(all_columns)),
         "all_measures": sorted(set(all_measures)),
     }
@@ -163,15 +207,21 @@ def extract_expression_analysis(
     registry = reference_registry or _registry_from_name_index(measure_name_to_ids or {})
     tables_by_lower = registry["tables_by_lower"]
     columns_by_table_lower = registry["columns_by_table_lower"]
-    column_names_by_table_lower = registry.get("column_names_by_table_lower", {})
+    column_name_to_ids_canonical = registry.get("column_name_to_ids_canonical", {})
     measure_key_to_id = registry["measure_key_to_id"]
     name_to_ids = registry["measure_name_to_ids"]
+    name_to_ids_canonical = registry.get("measure_name_to_ids_canonical", {})
 
     dependencies: set[str] = set()
     unknown_patterns: list[str] = []
     unresolved_references: list[dict[str, Any]] = []
     resolution_assumptions: list[str] = []
     ambiguous_reference_count = 0
+
+    local_vars = _extract_local_var_symbols(expression)
+    virtual_aliases = _extract_virtual_aliases(expression)
+    string_labels = _extract_double_quoted_literals(expression)
+    masked_expression = _mask_double_quoted_strings(expression)
 
     if _SELECTED_MEASURE_RE.search(expression):
         unknown_patterns.append("unsupported_pattern:SELECTEDMEASURE()")
@@ -200,8 +250,20 @@ def extract_expression_analysis(
             measure_key_to_id=measure_key_to_id,
         )
 
-    for ref_name in _MEASURE_REF_RE.findall(expression):
+    seen_unresolved_keys: set[tuple[str, str]] = set()
+    for ref_name in _MEASURE_REF_RE.findall(masked_expression):
         candidate = ref_name.strip()
+        if not candidate:
+            continue
+
+        if _canonical_symbol(candidate) in local_vars:
+            continue
+        if _canonical_symbol(candidate) in virtual_aliases:
+            continue
+        if _canonical_symbol(candidate) in string_labels:
+            continue
+        if _looks_like_bracketed_table_ref(candidate, tables_by_lower):
+            continue
 
         if expression_context == "calculated_column":
             local_column_id, assumption_message = _resolve_current_table_column(
@@ -221,11 +283,17 @@ def extract_expression_analysis(
                 measure_name=candidate,
                 current_table=current_table,
                 measure_name_to_ids=name_to_ids,
+                measure_name_to_ids_canonical=name_to_ids_canonical,
                 measure_key_to_id=measure_key_to_id,
             )
             if resolved_measure is not None:
                 dependencies.add(resolved_measure)
                 continue
+
+            unresolved_key = ("column", _canonical_symbol(candidate))
+            if unresolved_key in seen_unresolved_keys:
+                continue
+            seen_unresolved_keys.add(unresolved_key)
 
             unknown_patterns.append(f"unresolved_column:[{candidate}]")
             base_reason = "Missing referenced column (not found in current table) and no measure found."
@@ -239,6 +307,7 @@ def extract_expression_analysis(
                 expected_scope="current_table",
                 registry=registry,
                 current_table=current_table,
+                category="true_missing_model_object",
             )
             unresolved_references.append(enriched)
             continue
@@ -247,27 +316,63 @@ def extract_expression_analysis(
             measure_name=candidate,
             current_table=current_table,
             measure_name_to_ids=name_to_ids,
+            measure_name_to_ids_canonical=name_to_ids_canonical,
             measure_key_to_id=measure_key_to_id,
         )
-        if resolved is None:
-            unknown_patterns.append(f"unresolved_measure:[{candidate}]")
-            reason = _measure_resolution_reason(reason_code)
-            enriched = _enrich_unresolved_reference(
-                query=candidate,
-                reason=reason,
-                expected_type="measure",
-                expected_scope="any_table",
-                registry=registry,
-                current_table=current_table,
-            )
-            unresolved_references.append(enriched)
-            if reason_code == "ambiguous_measure":
-                ambiguous_reference_count += 1
+        if resolved is not None:
+            dependencies.add(resolved)
             continue
-        dependencies.add(resolved)
+
+        local_same_table_col, local_col_assumption = _resolve_current_table_column(
+            column_name=candidate,
+            current_table=current_table,
+            columns_by_table_lower=columns_by_table_lower,
+            current_object_id=current_object_id,
+            current_object_name=current_object_name,
+        )
+        if local_same_table_col is not None:
+            dependencies.add(local_same_table_col)
+            if local_col_assumption:
+                resolution_assumptions.append(local_col_assumption)
+            continue
+
+        any_table_col = _resolve_any_table_column(
+            column_name=candidate,
+            column_name_to_ids_canonical=column_name_to_ids_canonical,
+            expression=expression,
+        )
+        if any_table_col is not None:
+            dependencies.add(any_table_col)
+            continue
+
+        unresolved_key = ("measure", _canonical_symbol(candidate))
+        if unresolved_key in seen_unresolved_keys:
+            continue
+        seen_unresolved_keys.add(unresolved_key)
+
+        unknown_patterns.append(f"unresolved_measure:[{candidate}]")
+        reason = _measure_resolution_reason(reason_code)
+        category = _infer_unresolved_category(
+            query=candidate,
+            reason_code=reason_code,
+            registry=registry,
+        )
+        enriched = _enrich_unresolved_reference(
+            query=candidate,
+            reason=reason,
+            expected_type="measure",
+            expected_scope="any_table",
+            registry=registry,
+            current_table=current_table,
+            category=category,
+        )
+        unresolved_references.append(enriched)
+        if reason_code == "ambiguous_measure":
+            ambiguous_reference_count += 1
 
     if current_measure_id is not None:
         dependencies.discard(current_measure_id)
+    unknown_patterns = _dedupe_preserve_order(unknown_patterns)
     return ExpressionAnalysis(
         dependencies=dependencies,
         unknown_patterns=unknown_patterns,
@@ -287,7 +392,7 @@ def _resolve_current_table_column(
 ) -> tuple[str | None, str | None]:
     if not current_table:
         return None, None
-    local_id = columns_by_table_lower.get((current_table.strip().lower(), column_name.lower()))
+    local_id = columns_by_table_lower.get((current_table.strip().lower(), _canonical_symbol(column_name)))
     if local_id is None:
         return None, None
     object_label = current_object_name or current_object_id or "unknown"
@@ -306,6 +411,7 @@ def _enrich_unresolved_reference(
     expected_scope: str,
     registry: dict[str, Any],
     current_table: str | None,
+    category: str = "true_missing_model_object",
 ) -> dict[str, Any]:
     reason_with_hint = _reason_with_hint(reason)
     ranked = _rank_candidates(
@@ -320,20 +426,20 @@ def _enrich_unresolved_reference(
     best_guess_score = int(top["score"]) if top and int(top["score"]) >= 85 else None
     why_best_guess = _why_best_guess(top, expected_type) if best_guess is not None else None
 
-    likely_cause = "unknown"
+    likely_cause = category
     if "Unqualified" in reason or "implicit scope not applied" in reason:
-        likely_cause = "scope_issue"
+        likely_cause = "local_symbol_misclassified"
     elif best_guess is not None:
         likely_cause = "renamed_object"
-    elif not ranked:
-        likely_cause = "deleted_object"
+    elif likely_cause == "true_missing_model_object" and not ranked:
+        likely_cause = "true_missing_model_object"
 
     action = "MANUAL_REVIEW"
-    if likely_cause == "scope_issue":
+    if likely_cause in {"local_symbol_misclassified", "virtual_alias_misclassified"}:
         action = "QUALIFY_REFERENCE"
     elif likely_cause == "renamed_object" and best_guess is not None:
         action = "RENAME_REFERENCE"
-    elif likely_cause == "deleted_object":
+    elif likely_cause == "true_missing_model_object":
         action = "ADD_MISSING_OBJECT"
 
     did_you_mean = [entry["candidate"] for entry in ranked[:5]]
@@ -352,6 +458,7 @@ def _enrich_unresolved_reference(
         "expected_type": expected_type,
         "expected_scope": expected_scope,
         "likely_cause": likely_cause,
+        "category": likely_cause,
         "best_guess": best_guess,
         "best_guess_score": best_guess_score,
         "why_best_guess": why_best_guess,
@@ -552,14 +659,119 @@ def _levenshtein_distance(left: str, right: str) -> int:
     return previous[-1]
 
 
+def _canonical_symbol(value: str) -> str:
+    text = str(value or "").strip()
+    if text.startswith("[") and text.endswith("]") and len(text) > 2:
+        text = text[1:-1]
+    if text.startswith("'") and text.endswith("'") and len(text) > 2:
+        text = text[1:-1]
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        output.append(value)
+    return output
+
+
+def _mask_double_quoted_strings(expression: str) -> str:
+    return re.sub(r'"[^"]*"', '""', expression)
+
+
+def _extract_local_var_symbols(expression: str) -> set[str]:
+    names = { _canonical_symbol(name) for name in _VAR_NAME_RE.findall(expression) }
+    names.update(_canonical_symbol(name) for name in _VAR_BRACKET_NAME_RE.findall(expression))
+    return {name for name in names if name}
+
+
+def _extract_double_quoted_literals(expression: str) -> set[str]:
+    return {_canonical_symbol(item) for item in _STRING_LITERAL_RE.findall(expression) if str(item).strip()}
+
+
+def _extract_virtual_aliases(expression: str) -> set[str]:
+    aliases: set[str] = set()
+    masked = _mask_double_quoted_strings(expression)
+    for func_name in _VIRTUAL_ALIAS_FUNCTIONS:
+        for start, end in _function_call_spans(masked, func_name):
+            segment = expression[start:end]
+            for literal in _STRING_LITERAL_RE.findall(segment):
+                normalized = _canonical_symbol(literal)
+                if normalized:
+                    aliases.add(normalized)
+    return aliases
+
+
+def _function_call_spans(expression: str, function_name: str) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    pattern = re.compile(rf"\b{re.escape(function_name)}\s*\(", re.IGNORECASE)
+    for match in pattern.finditer(expression):
+        open_index = match.end() - 1
+        depth = 0
+        for idx in range(open_index, len(expression)):
+            char = expression[idx]
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0:
+                    spans.append((open_index + 1, idx))
+                    break
+    return spans
+
+
+def _resolve_any_table_column(
+    *,
+    column_name: str,
+    column_name_to_ids_canonical: dict[str, set[str]],
+    expression: str,
+) -> str | None:
+    if not _ROW_CONTEXT_FUNCTION_RE.search(expression):
+        return None
+    key = _canonical_symbol(column_name)
+    candidates = column_name_to_ids_canonical.get(key, set())
+    if len(candidates) == 1:
+        return next(iter(candidates))
+    return None
+
+
+def _looks_like_bracketed_table_ref(candidate: str, tables_by_lower: dict[str, str]) -> bool:
+    key = _canonical_symbol(candidate)
+    return key in tables_by_lower
+
+
+def _infer_unresolved_category(
+    *,
+    query: str,
+    reason_code: str,
+    registry: dict[str, Any],
+) -> str:
+    if reason_code == "ambiguous_measure":
+        return "extractor_parity_gap"
+    query_normalized = _canonical_symbol(query)
+    for _table, measure_name in registry.get("all_measures", []):
+        if _canonical_symbol(str(measure_name)) == query_normalized:
+            return "extractor_parity_gap"
+    return "true_missing_model_object"
+
+
 def _resolve_measure_reference(
     *,
     measure_name: str,
     current_table: str | None,
     measure_name_to_ids: dict[str, set[str]],
+    measure_name_to_ids_canonical: dict[str, set[str]],
     measure_key_to_id: dict[tuple[str, str], str],
 ) -> tuple[str | None, str]:
     candidates = measure_name_to_ids.get(measure_name)
+    if candidates is None:
+        canonical_candidates = measure_name_to_ids_canonical.get(_canonical_symbol(measure_name))
+        if canonical_candidates:
+            candidates = set(canonical_candidates)
     if candidates is None:
         lowered = measure_name.lower()
         case_insensitive = [
@@ -577,7 +789,7 @@ def _resolve_measure_reference(
         return next(iter(candidates)), "resolved"
 
     if current_table:
-        local_id = measure_key_to_id.get((current_table.strip().lower(), measure_name.lower()))
+        local_id = measure_key_to_id.get((current_table.strip().lower(), _canonical_symbol(measure_name)))
         if local_id is None:
             local_id = ObjectRef(
                 type=ObjectType.MEASURE, table=current_table, name=measure_name
@@ -604,7 +816,7 @@ def _resolve_qualified_reference(
     measure_key_to_id: dict[tuple[str, str], str],
 ) -> None:
     table_key = table_name.strip().strip("'").lower()
-    object_key = object_name.strip().lower()
+    object_key = _canonical_symbol(object_name)
     canonical_table = tables_by_lower.get(table_key, table_name.strip().strip("'"))
 
     column_id = columns_by_table_lower.get((table_key, object_key))
@@ -628,6 +840,7 @@ def _resolve_qualified_reference(
 
 def _registry_from_name_index(measure_name_to_ids: dict[str, set[str]]) -> dict[str, Any]:
     measure_key_to_id: dict[tuple[str, str], str] = {}
+    measure_name_to_ids_canonical: dict[str, set[str]] = defaultdict(set)
     all_measures: list[tuple[str, str]] = []
     for ids in measure_name_to_ids.values():
         for object_id in ids:
@@ -637,14 +850,18 @@ def _registry_from_name_index(measure_name_to_ids: dict[str, set[str]]) -> dict[
             if "." not in body:
                 continue
             table_name, measure_name = body.split(".", maxsplit=1)
-            measure_key_to_id[(table_name.lower(), measure_name.lower())] = object_id
+            measure_key_to_id[(table_name.lower(), _canonical_symbol(measure_name))] = object_id
+            measure_name_to_ids_canonical[_canonical_symbol(measure_name)].add(object_id)
             all_measures.append((table_name, measure_name))
     return {
         "tables_by_lower": {},
         "columns_by_table_lower": {},
         "column_names_by_table_lower": {},
+        "column_name_to_ids_canonical": {},
         "measure_name_to_ids": measure_name_to_ids,
+        "measure_name_to_ids_canonical": dict(measure_name_to_ids_canonical),
         "measure_key_to_id": measure_key_to_id,
+        "measure_home_table_by_id": {},
         "all_columns": [],
         "all_measures": all_measures,
     }

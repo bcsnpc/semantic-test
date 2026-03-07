@@ -1,12 +1,13 @@
 ﻿# semantic-test
 
-`semantic-test` is a Python CLI for **structural analysis** of Power BI semantic models (PBIP/TMDL).
+`semantic-test` is a Python CLI for **structural analysis** of Power BI semantic models.
 
 It helps teams answer:
 - What objects exist in the model?
 - What changed between two model versions?
 - What is the blast radius of those changes?
 - Why unresolved references exist and what likely fixes are available?
+- Which visuals depend on a semantic object?
 
 ## Phase-1 Status
 
@@ -28,12 +29,17 @@ For architecture details, see:
 ## What Phase-1 Includes
 
 - PBIP/TMDL definition discovery (`*.SemanticModel/definition`)
+- PBIX report parsing support for visual lineage
+- Live Desktop semantic scan (`scan desktop`)
+- Live Desktop visual lineage via process-correlated PBIX report artifacts (when available)
 - Object inventory extraction (tables, columns, measures, relationships, calc groups/items, field params)
 - Dependency graph construction
 - Deterministic snapshot generation and snapshot hashing
 - Snapshot diff (`AddedObject`, `RemovedObject`, `ModifiedObject`)
 - Exposure/blast-radius report
 - Object trace (upstream/downstream)
+- Trace visual dependencies (downstream visuals for semantic objects)
+- Mermaid export from trace (`--export mmd`, `--export mmd-simple`)
 - Strict CI gate (`--strict` + exit code `2`)
 - Rich unresolved diagnostics in scan output, including:
   - expected type/scope
@@ -95,6 +101,20 @@ python -m semantic_test.cli.main exposure "<before_path>" "<after_path>" --json
 python -m semantic_test.cli.main trace "<object_id>" "<model_path>" --depth 5
 ```
 
+Desktop mode:
+
+```bash
+python -m semantic_test.cli.main scan desktop
+python -m semantic_test.cli.main scan desktop:<port>
+```
+
+Trace Mermaid export:
+
+```bash
+python -m semantic_test.cli.main trace "<object_id>" "<model_path>" --depth 5 --export mmd
+python -m semantic_test.cli.main trace "<object_id>" "<model_path>" --depth 5 --export mmd-simple
+```
+
 ## Output Artifacts
 
 Default output root (under the resolved project/model root):
@@ -108,6 +128,7 @@ Default output root (under the resolved project/model root):
       snapshot.json
       report.txt
       report.json
+      trace_graph.mmd   # when trace --export mmd or --export mmd-simple is used
 ```
 
 ## Exit Codes
@@ -126,6 +147,7 @@ python -m semantic_test.cli.main exposure "<before_path>" "<after_path>" --forma
 ## Documentation
 
 - [User Guide](docs/USER_GUIDE.md)
+- [Architecture (Consolidated)](docs/ARCHITECTURE.md)
 - [Phase-1 Architecture](docs/PHASE1_ARCHITECTURE.md)
 - [Coverage Matrix](docs/coverage.md)
 - [Detailed Coverage Registry](COVERAGE.md)

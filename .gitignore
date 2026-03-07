@@ -25,3 +25,6 @@ Thumbs.db
 
 # Local sample model folder
 vc_test1/
+
+# Local archive artifacts
+src/semantic_test.zip

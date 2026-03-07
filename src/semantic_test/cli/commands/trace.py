@@ -20,6 +20,7 @@ from semantic_test.core.io.output_manager import (
 )
 from semantic_test.core.model.model_key import build_model_key, resolve_project_root
 from semantic_test.core.parse.pbip_locator import locate_definition_folder
+from semantic_test.exporters.mermaid import export_trace_to_mermaid
 
 
 def trace_command(
@@ -29,12 +30,15 @@ def trace_command(
     downstream: bool = typer.Option(False, "--downstream"),
     depth: int = typer.Option(2, "--depth"),
     output_format: str = typer.Option("text", "--format"),
+    export: str | None = typer.Option(None, "--export"),
     out: str | None = typer.Option(None, "--out"),
     outdir: str | None = typer.Option(None, "--outdir"),
 ) -> None:
     """Trace upstream/downstream dependencies for an object from latest snapshot."""
     if output_format not in {"text", "json"}:
         raise typer.BadParameter("--format must be one of: text, json")
+    if export is not None and export not in {"mmd", "mmd-simple"}:
+        raise typer.BadParameter("--export currently supports only: mmd, mmd-simple")
     if depth < 0:
         raise typer.BadParameter("--depth must be >= 0")
 
@@ -95,25 +99,49 @@ def trace_command(
     forward, reverse = _build_adjacency(snapshot)
     upstream_nodes = _walk_depth(forward, object_id, depth) if show_upstream else []
     downstream_nodes = _walk_depth(reverse, object_id, depth) if show_downstream else []
+    show_upstream_visuals = _is_visual_object(object_id)
+    upstream_visuals = _visual_rows(snapshot, upstream_nodes, traced_object_id=object_id) if show_upstream_visuals else []
+    downstream_visuals = _visual_rows(snapshot, downstream_nodes, traced_object_id=object_id)
 
-    report_text = _format_text(object_id, upstream_nodes, downstream_nodes)
+    report_text = _format_text(
+        object_id,
+        upstream_nodes,
+        downstream_nodes,
+        upstream_visuals=upstream_visuals,
+        downstream_visuals=downstream_visuals,
+        show_upstream_visuals=show_upstream_visuals,
+    )
     report_payload = {
         "status": "CLEAN",
         "object_id": object_id,
         "upstream": upstream_nodes,
         "downstream": downstream_nodes,
+        "upstream_visual_dependencies": upstream_visuals,
+        "downstream_visual_dependencies": downstream_visuals,
         "depth": depth,
         "model_key": snapshot.model_key,
         "snapshot_hash": snapshot.snapshot_hash,
+        "trace_scope_edges": _trace_scope_edges(
+            snapshot,
+            scope_nodes={object_id, *upstream_nodes, *downstream_nodes},
+        ),
     }
     report_json = json.dumps(report_payload, indent=2, sort_keys=True)
 
     write_text(run_folder, "snapshot.json", json.dumps(asdict(snapshot), indent=2, sort_keys=True))
     write_text(run_folder, "report.txt", report_text)
     write_text(run_folder, "report.json", report_json)
+    if export == "mmd":
+        mmd_text = export_trace_to_mermaid(report_payload, mode="full")
+        write_text(run_folder, "trace_graph.mmd", mmd_text)
+    if export == "mmd-simple":
+        mmd_text = export_trace_to_mermaid(report_payload, mode="simple")
+        write_text(run_folder, "trace_graph.mmd", mmd_text)
 
     manifest["status"] = "CLEAN"
     manifest["snapshot_hash"] = snapshot.snapshot_hash
+    if export:
+        manifest["export"] = export
     write_manifest(run_folder, manifest)
 
     output = report_json if output_format == "json" else report_text
@@ -184,20 +212,112 @@ def _walk_depth(adjacency: dict[str, set[str]], start: str, depth: int) -> list[
     return sorted(visited)
 
 
-def _format_text(object_id: str, upstream_nodes: list[str], downstream_nodes: list[str]) -> str:
+def _trace_scope_edges(snapshot: Snapshot, *, scope_nodes: set[str]) -> list[list[str]]:
+    edges: list[list[str]] = []
+    for source, target, _kind in snapshot.edges:
+        if source in scope_nodes and target in scope_nodes:
+            edges.append([source, target])
+    edges.sort(key=lambda row: (row[0], row[1]))
+    return edges
+
+
+def _visual_rows(
+    snapshot: Snapshot,
+    nodes: list[str],
+    *,
+    traced_object_id: str,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for node_id in nodes:
+        if not node_id.startswith("Visual:"):
+            continue
+        metadata = snapshot.objects.get(node_id)
+        meta = metadata.metadata if metadata is not None else {}
+        roles = _roles_for_traced_object(meta, traced_object_id)
+        rows.append(
+            {
+                "object_id": node_id,
+                "page_name": str(meta.get("page_name", "")) or "<unknown_page>",
+                "visual_name": str(meta.get("visual_name", "")) or str(meta.get("visual_id", "")) or "<unknown_visual>",
+                "title": str(meta.get("title", "")) or "<no_title>",
+                "visual_id": str(meta.get("visual_id", "")) or "<unknown_id>",
+                "visual_type": str(meta.get("visual_type", "")) or "<unknown_type>",
+                "roles": ", ".join(roles) if roles else "<unknown_role>",
+            }
+        )
+    rows.sort(key=lambda row: (row["page_name"], row["visual_name"], row["visual_id"], row["roles"], row["object_id"]))
+    return rows
+
+
+def _format_text(
+    object_id: str,
+    upstream_nodes: list[str],
+    downstream_nodes: list[str],
+    *,
+    upstream_visuals: list[dict[str, str]],
+    downstream_visuals: list[dict[str, str]],
+    show_upstream_visuals: bool,
+) -> str:
     lines = [f"Object: {object_id}", "", "Upstream:"]
     if upstream_nodes:
         for item in upstream_nodes:
             lines.append(f"  {item}")
     else:
         lines.append("  none")
+    if show_upstream_visuals:
+        lines.extend(["", "Upstream Visual Dependencies:"])
+        if upstream_visuals:
+            lines.extend(_format_grouped_visuals(upstream_visuals))
+        else:
+            lines.append("  none")
     lines.extend(["", "Downstream:"])
     if downstream_nodes:
         for item in downstream_nodes:
             lines.append(f"  {item}")
     else:
         lines.append("  none")
+    lines.extend(["", "Downstream Visual Dependencies:"])
+    if downstream_visuals:
+        lines.extend(_format_grouped_visuals(downstream_visuals))
+    else:
+        lines.append("  none")
     return "\n".join(lines)
+
+
+def _format_grouped_visuals(rows: list[dict[str, str]]) -> list[str]:
+    lines: list[str] = ["------------------------------"]
+    current_page: str | None = None
+    for row in rows:
+        page = row["page_name"]
+        if page != current_page:
+            lines.append(f"Page: {page}")
+            current_page = page
+        visual_label = row["title"] if row["title"] != "<no_title>" else row["visual_id"]
+        lines.append(f"  Visual: {visual_label}")
+        lines.append(f"    Type: {row['visual_type']}")
+        lines.append(f"    Role: {row['roles']}")
+        if visual_label != row["visual_id"]:
+            lines.append(f"    Id: {row['visual_id']}")
+        lines.append(f"    ObjectId: {row['object_id']}")
+    return lines
+
+
+def _roles_for_traced_object(visual_meta: dict[str, Any], traced_object_id: str) -> list[str]:
+    bindings = visual_meta.get("bindings", [])
+    if not isinstance(bindings, list):
+        return []
+    roles = sorted(
+        {
+            str(binding.get("role", "")).strip() or "unknown"
+            for binding in bindings
+            if isinstance(binding, dict) and str(binding.get("target", "")) == traced_object_id
+        }
+    )
+    return roles
+
+
+def _is_visual_object(object_id: str) -> bool:
+    return object_id.startswith("Visual:")
 
 
 def _emit_output(output: str, out: str | None) -> None:
